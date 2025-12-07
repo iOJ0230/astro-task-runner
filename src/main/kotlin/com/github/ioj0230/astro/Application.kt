@@ -1,27 +1,22 @@
 package com.github.ioj0230.astro
 
-import com.github.ioj0230.astro.core.astro.AstroEventService
-import com.github.ioj0230.astro.core.astro.AstroMathService
-import com.github.ioj0230.astro.core.astro.DummyAstroEventProvider
-import com.github.ioj0230.astro.core.astro.DummyAstroMathService
-import com.github.ioj0230.astro.core.darkwindow.DarkWindowRequest
-import com.github.ioj0230.astro.core.darkwindow.DarkWindowResponse
-import com.github.ioj0230.astro.core.meteors.MeteorAlertRequest
-import com.github.ioj0230.astro.core.meteors.MeteorAlertResponse
-import com.github.ioj0230.astro.core.sky.SkySummaryRequest
-import com.github.ioj0230.astro.core.sky.SkySummaryResponse
+import com.github.ioj0230.astro.api.darkWindowRoute
+import com.github.ioj0230.astro.api.meteorAlertRoute
+import com.github.ioj0230.astro.api.skySummaryRoute
+import com.github.ioj0230.astro.core.meteor.AstroEventService
+import com.github.ioj0230.astro.core.math.AstroMathService
+import com.github.ioj0230.astro.infra.math.DummyAstroMathService
 import com.github.ioj0230.astro.core.sky.SkySummaryService
+import com.github.ioj0230.astro.infra.meteor.DummyAstroEventProvider
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
 import io.ktor.server.plugins.callloging.*
 import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.serialization.kotlinx.json.*
-import io.ktor.server.request.receive
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.serialization.json.Json
-import java.time.LocalDate
 
 fun main() {
     embeddedServer(Netty, port = 8080, module = Application::module)
@@ -35,17 +30,14 @@ data class ServiceRegistry(
 )
 
 fun Application.module() {
-
-    val astroMathService = DummyAstroMathService()
-    val astroEventService = DummyAstroEventProvider()
+    val astroMathService: AstroMathService = DummyAstroMathService()
+    val astroEventService: AstroEventService = DummyAstroEventProvider()
+    val skySummaryService = SkySummaryService(astroMathService, astroEventService)
 
     val services = ServiceRegistry(
         astroMathService = astroMathService,
         astroEventService = astroEventService,
-        skySummaryService = SkySummaryService(
-            astroMathService = astroMathService,
-            astroEventService = astroEventService
-        )
+        skySummaryService = skySummaryService
     )
 
     install(CallLogging)
@@ -58,40 +50,8 @@ fun Application.module() {
             call.respondText("OK")
         }
 
-        post("/api/run/astro/dark-window") {
-            val request = call.receive<DarkWindowRequest>()
-            val date = LocalDate.parse(request.dateIso)
-
-            val window = services.astroMathService.computeDarkWindow(
-                latitude = request.latitude,
-                longitude = request.longitude,
-                date = date,
-                timeZoneId = request.timeZoneId
-            )
-
-            val response = DarkWindowResponse(
-                window = window,
-                notes = "Moon + Milky Way hints can be added later."
-            )
-
-            call.respond(response)
-        }
-
-        post("/api/run/astro/meteor-alert") {
-            val request = call.receive<MeteorAlertRequest>()
-
-            val response: MeteorAlertResponse =
-                services.astroEventService.upcomingMeteorShowers(request)
-
-            call.respond(response)
-        }
-
-        post("/api/run/astro/sky-summary") {
-            val request = call.receive<SkySummaryRequest>()
-
-            val response: SkySummaryResponse =
-                services.skySummaryService.buildSummary(request)
-
-            call.respond(response)
-        }    }
+        darkWindowRoute(services)
+        meteorAlertRoute(services)
+        skySummaryRoute(services)
+    }
 }
