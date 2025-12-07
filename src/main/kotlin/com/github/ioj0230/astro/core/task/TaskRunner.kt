@@ -30,14 +30,21 @@ class TaskRunner(
     private val json: Json = Json { ignoreUnknownKeys = true; prettyPrint = true }
 ) {
 
-    fun createDarkWindowTask(name: String, request: DarkWindowRequest): Task {
+    fun createDarkWindowTask(
+        name: String,
+        request: DarkWindowRequest,
+        frequency: TaskFrequency = TaskFrequency.MANUAL,
+        preferredHourUtc: Int? = null
+    ): Task {
         val now = OffsetDateTime.now(ZoneOffset.UTC).toString()
         val task = Task(
             id = UUID.randomUUID().toString(),
             name = name,
             type = "dark-window",
             payloadJson = json.encodeToString(DarkWindowRequest.serializer(), request),
-            createdAtIso = now
+            createdAtIso = now,
+            frequency = frequency,
+            preferredHourUtc = preferredHourUtc
         )
         return taskRepository.create(task)
     }
@@ -67,10 +74,13 @@ class TaskRunner(
 
     fun runAllEnabled(): List<TaskRunResult> {
         val all = taskRepository.findAll()
-        val enabled = all.filter { it.enabled }
+        val now = OffsetDateTime.now(ZoneOffset.UTC)
 
-        return enabled.map { task ->
-            // Reuse existing logic; if runTask returns null, keep that task unreported
+        val due = all.filter { task ->
+            task.enabled && isDue(task, now)
+        }
+
+        return due.map { task ->
             runTask(task.id) ?: TaskRunResult(
                 task = task.copy(
                     lastStatus = TaskStatus.FAILED,
@@ -110,5 +120,34 @@ class TaskRunner(
         )
 
         return TaskRunResult(taskRepository.update(updated), outputJson)
+    }
+
+    private fun isDue(task: Task, now: OffsetDateTime): Boolean {
+        return when (task.frequency) {
+            TaskFrequency.MANUAL -> false  // tick never runs manual tasks
+            TaskFrequency.DAILY -> isDueDaily(task, now)
+        }
+    }
+
+    private fun isDueDaily(task: Task, now: OffsetDateTime): Boolean {
+        val preferredHour = task.preferredHourUtc ?: 0
+        val nowDate = now.toLocalDate()
+        val nowHour = now.hour
+
+        // If task is never run, and it's past the preferred hour today → run it
+        if (task.lastRunAtIso == null) {
+            return nowHour >= preferredHour
+        }
+
+        val lastRun = OffsetDateTime.parse(task.lastRunAtIso)
+        val lastDate = lastRun.toLocalDate()
+
+        // If task already ran it today, don't run again
+        if (lastDate.isEqual(nowDate)) {
+            return false
+        }
+
+        // If it's a new day, and it's reached preferred hour → run
+        return nowHour >= preferredHour
     }
 }

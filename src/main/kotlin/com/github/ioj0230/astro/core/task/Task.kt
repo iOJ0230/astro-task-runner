@@ -12,7 +12,9 @@ data class Task(
     val createdAtIso: String,
     val lastRunAtIso: String? = null,
     val lastStatus: TaskStatus = TaskStatus.NEVER_RUN,
-    val lastError: String? = null
+    val lastError: String? = null,
+    val frequency: TaskFrequency = TaskFrequency.MANUAL,
+    val preferredHourUtc: Int? = null,
 )
 
 @Serializable
@@ -20,4 +22,11 @@ enum class TaskStatus {
     NEVER_RUN,
     SUCCESS,
     FAILED
+}
+
+@Serializable
+enum class TaskFrequency {
+    MANUAL,        // only /run endpoint, tick ignores
+    DAILY          // once per day is enough for now
+    // Later: HOURLY, WEEKLY, CUSTOM_CRON, etc.
 }

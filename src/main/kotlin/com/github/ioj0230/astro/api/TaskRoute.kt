@@ -3,6 +3,7 @@ package com.github.ioj0230.astro.api
 import com.github.ioj0230.astro.ServiceRegistry
 import com.github.ioj0230.astro.core.darkwindow.DarkWindowRequest
 import com.github.ioj0230.astro.core.task.Task
+import com.github.ioj0230.astro.core.task.TaskFrequency
 import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
@@ -16,7 +17,9 @@ fun Route.taskRoute(services: ServiceRegistry) {
     @Serializable
     data class CreateDarkWindowTaskRequest(
         val name: String,
-        val darkWindowRequest: DarkWindowRequest
+        val darkWindowRequest: DarkWindowRequest,
+        val frequency: TaskFrequency = TaskFrequency.MANUAL,
+        val preferredHourUtc: Int? = null
     )
 
     @Serializable
@@ -42,7 +45,9 @@ fun Route.taskRoute(services: ServiceRegistry) {
         val request = call.receive<CreateDarkWindowTaskRequest>()
         val task = services.taskRunner.createDarkWindowTask(
             name = request.name,
-            request = request.darkWindowRequest
+            request = request.darkWindowRequest,
+            frequency = request.frequency,
+            preferredHourUtc = request.preferredHourUtc
         )
         call.respond(task)
     }
