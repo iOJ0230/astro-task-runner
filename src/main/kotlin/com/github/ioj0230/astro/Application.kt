@@ -8,6 +8,9 @@ import com.github.ioj0230.astro.core.darkwindow.DarkWindowRequest
 import com.github.ioj0230.astro.core.darkwindow.DarkWindowResponse
 import com.github.ioj0230.astro.core.meteors.MeteorAlertRequest
 import com.github.ioj0230.astro.core.meteors.MeteorAlertResponse
+import com.github.ioj0230.astro.core.sky.SkySummaryRequest
+import com.github.ioj0230.astro.core.sky.SkySummaryResponse
+import com.github.ioj0230.astro.core.sky.SkySummaryService
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
@@ -27,14 +30,22 @@ fun main() {
 
 data class ServiceRegistry(
     val astroMathService: AstroMathService,
-    val astroEventService: AstroEventService
+    val astroEventService: AstroEventService,
+    val skySummaryService: SkySummaryService,
 )
 
 fun Application.module() {
 
+    val astroMathService = DummyAstroMathService()
+    val astroEventService = DummyAstroEventProvider()
+
     val services = ServiceRegistry(
-        astroMathService = DummyAstroMathService(),
-        astroEventService = DummyAstroEventProvider()
+        astroMathService = astroMathService,
+        astroEventService = astroEventService,
+        skySummaryService = SkySummaryService(
+            astroMathService = astroMathService,
+            astroEventService = astroEventService
+        )
     )
 
     install(CallLogging)
@@ -74,5 +85,13 @@ fun Application.module() {
 
             call.respond(response)
         }
-    }
+
+        post("/api/run/astro/sky-summary") {
+            val request = call.receive<SkySummaryRequest>()
+
+            val response: SkySummaryResponse =
+                services.skySummaryService.buildSummary(request)
+
+            call.respond(response)
+        }    }
 }
