@@ -30,6 +30,11 @@ fun Route.taskRoute(services: ServiceRegistry) {
         val outputJson: String? = null
     )
 
+    @Serializable
+    data class TaskTickResponse(
+        val results: List<TaskRunResponse>
+    )
+
     // --- Endpoints ---
 
     // Create a dark-window task
@@ -73,5 +78,19 @@ fun Route.taskRoute(services: ServiceRegistry) {
         call.respond(TaskRunResponse(task = result.task, outputJson = result.outputJson))
     }
 
-    // Later: /api/tasks/tick for scheduler
+    // Run all enabled tasks (for Cloud Scheduler)
+    post("/api/tasks/tick") {
+        val runResults = services.taskRunner.runAllEnabled()
+
+        val response = TaskTickResponse(
+            results = runResults.map { result ->
+                TaskRunResponse(
+                    task = result.task,
+                    outputJson = result.outputJson
+                )
+            }
+        )
+
+        call.respond(response)
+    }
 }

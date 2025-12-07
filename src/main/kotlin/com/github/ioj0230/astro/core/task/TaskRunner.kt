@@ -65,6 +65,22 @@ class TaskRunner(
         }
     }
 
+    fun runAllEnabled(): List<TaskRunResult> {
+        val all = taskRepository.findAll()
+        val enabled = all.filter { it.enabled }
+
+        return enabled.map { task ->
+            // Reuse existing logic; if runTask returns null, keep that task unreported
+            runTask(task.id) ?: TaskRunResult(
+                task = task.copy(
+                    lastStatus = TaskStatus.FAILED,
+                    lastError = "Task disappeared before tick run"
+                ),
+                outputJson = null
+            )
+        }
+    }
+
     private fun runDarkWindowTask(task: Task, nowIso: String): TaskRunResult {
         val request = json.decodeFromString(
             DarkWindowRequest.serializer(),
