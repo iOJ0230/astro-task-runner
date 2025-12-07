@@ -3,11 +3,12 @@ package com.github.ioj0230.astro.core.task
 import com.github.ioj0230.astro.core.darkwindow.DarkWindowRequest
 import com.github.ioj0230.astro.core.darkwindow.DarkWindowResponse
 import com.github.ioj0230.astro.core.math.AstroMathService
-import com.github.ioj0230.astro.core.sky.SkySummaryService
 import com.github.ioj0230.astro.core.meteor.AstroEventService
+import com.github.ioj0230.astro.core.sky.SkySummaryService
 import kotlinx.serialization.json.Json
+import java.time.Clock
+import java.time.LocalDate
 import java.time.OffsetDateTime
-import java.time.ZoneOffset
 import java.util.UUID
 
 data class TaskRunResult(
@@ -27,8 +28,11 @@ class TaskRunner(
     private val astroMathService: AstroMathService,
     private val astroEventService: AstroEventService,
     private val skySummaryService: SkySummaryService,
-    private val json: Json = Json { ignoreUnknownKeys = true; prettyPrint = true }
+    private val json: Json = Json { ignoreUnknownKeys = true; prettyPrint = true },
+    private val clock: Clock = Clock.systemUTC(),
 ) {
+
+    private fun nowUtc(): OffsetDateTime = OffsetDateTime.now(clock)
 
     fun createDarkWindowTask(
         name: String,
@@ -36,7 +40,7 @@ class TaskRunner(
         frequency: TaskFrequency = TaskFrequency.MANUAL,
         preferredHourUtc: Int? = null
     ): Task {
-        val now = OffsetDateTime.now(ZoneOffset.UTC).toString()
+        val now = nowUtc().toString()
         val task = Task(
             id = UUID.randomUUID().toString(),
             name = name,
@@ -52,18 +56,21 @@ class TaskRunner(
     fun runTask(taskId: String): TaskRunResult? {
         val existing = taskRepository.findById(taskId) ?: return null
         if (!existing.enabled) {
-            return TaskRunResult(existing.copy(lastStatus = TaskStatus.FAILED, lastError = "Task disabled"))
+            return TaskRunResult(
+                existing.copy(
+                    lastStatus = TaskStatus.FAILED,
+                    lastError = "Task disabled"
+                )
+            )
         }
 
-        val now = OffsetDateTime.now(ZoneOffset.UTC).toString()
+        val nowIso = nowUtc().toString()
 
         return when (existing.type) {
-            "dark-window" -> runDarkWindowTask(existing, now)
-            // "meteor-alert" -> TODO later
-            // "sky-summary" -> TODO later
+            "dark-window" -> runDarkWindowTask(existing, nowIso)
             else -> {
                 val updated = existing.copy(
-                    lastRunAtIso = now,
+                    lastRunAtIso = nowIso,
                     lastStatus = TaskStatus.FAILED,
                     lastError = "Unknown task type: ${existing.type}"
                 )
@@ -74,7 +81,7 @@ class TaskRunner(
 
     fun runAllEnabled(): List<TaskRunResult> {
         val all = taskRepository.findAll()
-        val now = OffsetDateTime.now(ZoneOffset.UTC)
+        val now = nowUtc()
 
         val due = all.filter { task ->
             task.enabled && isDue(task, now)
@@ -97,7 +104,7 @@ class TaskRunner(
             task.payloadJson
         )
 
-        val date = java.time.LocalDate.parse(request.dateIso)
+        val date = LocalDate.parse(request.dateIso)
 
         val window = astroMathService.computeDarkWindow(
             latitude = request.latitude,
@@ -122,9 +129,13 @@ class TaskRunner(
         return TaskRunResult(taskRepository.update(updated), outputJson)
     }
 
+    /**
+     * Scheduling helpers
+     */
+
     private fun isDue(task: Task, now: OffsetDateTime): Boolean {
         return when (task.frequency) {
-            TaskFrequency.MANUAL -> false  // tick never runs manual tasks
+            TaskFrequency.MANUAL -> false
             TaskFrequency.DAILY -> isDueDaily(task, now)
         }
     }

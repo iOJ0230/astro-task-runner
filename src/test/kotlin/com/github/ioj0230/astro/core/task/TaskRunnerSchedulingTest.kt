@@ -9,7 +9,10 @@ import com.github.ioj0230.astro.core.meteor.MeteorAlertResponse
 import com.github.ioj0230.astro.core.sky.SkySummaryService
 import com.github.ioj0230.astro.infra.task.InMemoryTaskRepository
 import kotlinx.serialization.json.Json
-import kotlin.test.Test
+import org.junit.Test
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -17,21 +20,18 @@ class TaskRunnerSchedulingTest {
 
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = false }
 
-    // Very small stub implementations so we don't depend on real dummy services:
-
     private val stubAstroMathService = object : AstroMathService {
         override fun computeDarkWindow(
             latitude: Double,
             longitude: Double,
             date: java.time.LocalDate,
             timeZoneId: String
-        ): DarkWindow {
-            return DarkWindow(
+        ): DarkWindow =
+            DarkWindow(
                 startIso = "2025-08-12T20:00:00+08:00",
                 endIso = "2025-08-13T03:00:00+08:00",
                 description = "Stub dark window"
             )
-        }
 
         override fun describeMoonPhase(
             dateTime: java.time.OffsetDateTime,
@@ -47,9 +47,8 @@ class TaskRunnerSchedulingTest {
     }
 
     private val stubAstroEventService = object : AstroEventService {
-        override fun upcomingMeteorShowers(request: MeteorAlertRequest): MeteorAlertResponse {
-            return MeteorAlertResponse(events = emptyList(), summary = "Stub meteors")
-        }
+        override fun upcomingMeteorShowers(request: MeteorAlertRequest): MeteorAlertResponse =
+            MeteorAlertResponse(events = emptyList(), summary = "Stub meteors")
     }
 
     private val stubSkySummaryService = SkySummaryService(
@@ -59,13 +58,19 @@ class TaskRunnerSchedulingTest {
 
     @Test
     fun `should not run MANUAL tasks`() {
+        val clock = Clock.fixed(
+            Instant.parse("2025-08-12T10:00:00Z"),
+            ZoneOffset.UTC
+        )
+
         val repo = InMemoryTaskRepository()
         val runner = TaskRunner(
             taskRepository = repo,
             astroMathService = stubAstroMathService,
             astroEventService = stubAstroEventService,
             skySummaryService = stubSkySummaryService,
-            json = json
+            json = json,
+            clock = clock
         )
 
         val manualTask = runner.createDarkWindowTask(
@@ -77,7 +82,6 @@ class TaskRunnerSchedulingTest {
 
         val results = runner.runAllEnabled()
 
-        // No tasks should be run
         assertTrue(results.isEmpty(), "MANUAL tasks should not be run by tick")
 
         val stored = repo.findById(manualTask.id)!!
@@ -86,35 +90,41 @@ class TaskRunnerSchedulingTest {
     }
 
     @Test
-    fun `should run DAILY tasks once after preferred hour`() {
+    fun `should run DAILY tasks once per day after preferred hour`() {
+        val clock = Clock.fixed(
+            Instant.parse("2025-08-12T10:00:00Z"), // 10:00 UTC
+            ZoneOffset.UTC
+        )
+
         val repo = InMemoryTaskRepository()
         val runner = TaskRunner(
             taskRepository = repo,
             astroMathService = stubAstroMathService,
             astroEventService = stubAstroEventService,
             skySummaryService = stubSkySummaryService,
-            json = json
+            json = json,
+            clock = clock
         )
 
         val dailyTask = runner.createDarkWindowTask(
             name = "Daily dark window",
             request = sampleDarkWindowRequest(),
             frequency = TaskFrequency.DAILY,
-            preferredHourUtc = 0 // assume it's fine in tests
+            preferredHourUtc = 8
         )
 
-        val resultsFirst = runner.runAllEnabled()
-        assertEquals(1, resultsFirst.size, "First tick should run DAILY task once")
+        val firstResults = runner.runAllEnabled()
+        assertEquals(1, firstResults.size, "First tick should run DAILY task")
 
         val updated = repo.findById(dailyTask.id)!!
         assertEquals(TaskStatus.SUCCESS, updated.lastStatus)
         assertTrue(updated.lastRunAtIso != null)
 
-        // Running tick again immediately should not run it again the same day
-        val resultsSecond = runner.runAllEnabled()
+        // Tick again at same clock time -> should not run again
+        val secondResults = runner.runAllEnabled()
         assertTrue(
-            resultsSecond.isEmpty(),
-            "Second tick on same day should not re-run DAILY task"
+            secondResults.isEmpty(),
+            "Second tick same day should not re-run DAILY task"
         )
     }
 
