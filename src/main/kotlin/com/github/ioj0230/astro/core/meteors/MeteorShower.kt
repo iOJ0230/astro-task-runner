@@ -1,13 +1,11 @@
 package com.github.ioj0230.astro.core.meteors
 
 import kotlinx.serialization.Serializable
-import java.time.LocalDate
-import java.time.OffsetDateTime
 
 @Serializable
 data class MeteorShowerEvent(
     val name: String,
-    val peakDate: String,
+    val peakDateIso: String,
     val zhr: Int, // Zenithal Hourly Rate (approx. meteors per hour)
     val radiantConstellation: String,
     val bestViewStartIso: String,
