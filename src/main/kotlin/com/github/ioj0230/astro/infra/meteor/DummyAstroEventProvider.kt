@@ -1,8 +1,9 @@
-package com.github.ioj0230.astro.core.astro
+package com.github.ioj0230.astro.infra.meteor
 
-import com.github.ioj0230.astro.core.meteors.MeteorAlertRequest
-import com.github.ioj0230.astro.core.meteors.MeteorAlertResponse
-import com.github.ioj0230.astro.core.meteors.MeteorShowerEvent
+import com.github.ioj0230.astro.core.meteor.AstroEventService
+import com.github.ioj0230.astro.core.meteor.MeteorAlertRequest
+import com.github.ioj0230.astro.core.meteor.MeteorAlertResponse
+import com.github.ioj0230.astro.core.meteor.MeteorShowerEvent
 import java.time.*
 
 class DummyAstroEventProvider : AstroEventService {

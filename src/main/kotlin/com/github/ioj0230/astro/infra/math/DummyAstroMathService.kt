@@ -1,7 +1,12 @@
-package com.github.ioj0230.astro.core.astro
+package com.github.ioj0230.astro.infra.math
 
+import com.github.ioj0230.astro.core.math.AstroMathService
 import com.github.ioj0230.astro.core.darkwindow.DarkWindow
-import java.time.*
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
 
 class DummyAstroMathService : AstroMathService {
 

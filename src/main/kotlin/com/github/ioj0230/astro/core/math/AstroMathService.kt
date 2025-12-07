@@ -1,4 +1,4 @@
-package com.github.ioj0230.astro.core.astro
+package com.github.ioj0230.astro.core.math
 
 import com.github.ioj0230.astro.core.darkwindow.DarkWindow
 import java.time.LocalDate

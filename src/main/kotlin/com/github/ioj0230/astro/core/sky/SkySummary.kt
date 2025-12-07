@@ -1,7 +1,7 @@
 package com.github.ioj0230.astro.core.sky
 
 import com.github.ioj0230.astro.core.darkwindow.DarkWindow
-import com.github.ioj0230.astro.core.meteors.MeteorShowerEvent
+import com.github.ioj0230.astro.core.meteor.MeteorShowerEvent
 import kotlinx.serialization.Serializable
 
 @Serializable

@@ -1,4 +1,4 @@
-package com.github.ioj0230.astro.core.meteors
+package com.github.ioj0230.astro.core.meteor
 
 import kotlinx.serialization.Serializable
 

@@ -1,8 +1,8 @@
 package com.github.ioj0230.astro.core.sky
 
-import com.github.ioj0230.astro.core.astro.AstroEventService
-import com.github.ioj0230.astro.core.astro.AstroMathService
-import com.github.ioj0230.astro.core.meteors.MeteorAlertRequest
+import com.github.ioj0230.astro.core.meteor.AstroEventService
+import com.github.ioj0230.astro.core.math.AstroMathService
+import com.github.ioj0230.astro.core.meteor.MeteorAlertRequest
 import java.time.LocalDate
 
 class SkySummaryService(
