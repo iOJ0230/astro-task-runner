@@ -4,6 +4,7 @@ plugins {
     kotlin("jvm") version "1.9.23"
     id("io.ktor.plugin") version "2.3.11"
     id("org.jetbrains.kotlin.plugin.serialization") version "1.9.23"
+    id("com.github.johnrengelman.shadow") version "8.1.1"
 }
 
 group = "com.github.ioj0230"
@@ -45,6 +46,14 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation("io.ktor:ktor-server-tests-jvm:2.3.11")
     testImplementation("io.ktor:ktor-client-content-negotiation-jvm:2.3.11")
+}
+
+tasks {
+    shadowJar {
+        archiveBaseName.set("app")
+        archiveClassifier.set("all")
+        archiveVersion.set("")
+    }
 }
 
 tasks.withType<KotlinCompile> {
