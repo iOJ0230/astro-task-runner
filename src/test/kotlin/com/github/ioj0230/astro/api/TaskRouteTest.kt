@@ -1,6 +1,7 @@
 package com.github.ioj0230.astro.api
 
 import com.github.ioj0230.astro.core.task.Task
+import com.github.ioj0230.astro.core.task.TaskType
 import com.github.ioj0230.astro.module
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -56,7 +57,7 @@ class TaskRouteTest {
             val task = json.decodeFromString<Task>(body)
 
             assertNotNull(task.id, "Task id should not be null")
-            assertEquals("dark-window", task.type)
+            assertEquals(TaskType.DARK_WINDOW, task.type)
             assertEquals("Test dark-window task", task.name)
         }
 
