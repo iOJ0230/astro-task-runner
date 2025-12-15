@@ -7,18 +7,18 @@ data class DarkWindowRequest(
     val latitude: Double,
     val longitude: Double,
     val dateIso: String,
-    val timeZoneId: String
+    val timeZoneId: String,
 )
 
 @Serializable
 data class DarkWindow(
     val startIso: String,
     val endIso: String,
-    val description: String
+    val description: String,
 )
 
 @Serializable
 data class DarkWindowResponse(
     val window: DarkWindow,
-    val notes: String? = null
+    val notes: String? = null,
 )

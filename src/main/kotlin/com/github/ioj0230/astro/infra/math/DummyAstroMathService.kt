@@ -1,7 +1,7 @@
 package com.github.ioj0230.astro.infra.math
 
-import com.github.ioj0230.astro.core.math.AstroMathService
 import com.github.ioj0230.astro.core.darkwindow.DarkWindow
+import com.github.ioj0230.astro.core.math.AstroMathService
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -9,7 +9,6 @@ import java.time.OffsetDateTime
 import java.time.ZoneId
 
 class DummyAstroMathService : AstroMathService {
-
     /**
      * 🌙 SUPER DUMB BUT PREDICTABLE LOGIC:
      *     - Assume "dark" is roughly 20:00–03:00 local time
@@ -19,7 +18,7 @@ class DummyAstroMathService : AstroMathService {
         latitude: Double,
         longitude: Double,
         date: LocalDate,
-        timeZoneId: String
+        timeZoneId: String,
     ): DarkWindow {
         val zoneId = ZoneId.of(timeZoneId)
 
@@ -32,7 +31,7 @@ class DummyAstroMathService : AstroMathService {
         return DarkWindow(
             startIso = start.toString(),
             endIso = end.toString(),
-            description = "Approximate dark window from 20:00 to 03:00 local time."
+            description = "Approximate dark window from 20:00 to 03:00 local time.",
         )
     }
 
@@ -42,7 +41,7 @@ class DummyAstroMathService : AstroMathService {
     override fun describeMoonPhase(
         dateTime: OffsetDateTime,
         latitude: Double,
-        longitude: Double
+        longitude: Double,
     ): String {
         val day = dateTime.dayOfMonth
 
@@ -61,7 +60,7 @@ class DummyAstroMathService : AstroMathService {
     override fun bestMilkyWayTimeHint(
         date: LocalDate,
         latitude: Double,
-        longitude: Double
+        longitude: Double,
     ): String {
         return "Milky Way best viewed around local midnight if seasonally visible."
     }

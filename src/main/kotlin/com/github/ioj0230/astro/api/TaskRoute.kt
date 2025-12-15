@@ -4,14 +4,16 @@ import com.github.ioj0230.astro.ServiceRegistry
 import com.github.ioj0230.astro.core.darkwindow.DarkWindowRequest
 import com.github.ioj0230.astro.core.task.Task
 import com.github.ioj0230.astro.core.task.TaskFrequency
-import io.ktor.server.application.*
-import io.ktor.server.request.*
-import io.ktor.server.response.*
-import io.ktor.server.routing.*
+import io.ktor.server.application.call
+import io.ktor.server.request.receive
+import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.Route
+import io.ktor.server.routing.get
+import io.ktor.server.routing.post
 import kotlinx.serialization.Serializable
 
 fun Route.taskRoute(services: ServiceRegistry) {
-
     // --- API models just for creation / running ---
 
     @Serializable
@@ -19,23 +21,23 @@ fun Route.taskRoute(services: ServiceRegistry) {
         val name: String,
         val darkWindowRequest: DarkWindowRequest,
         val frequency: TaskFrequency = TaskFrequency.MANUAL,
-        val preferredHourUtc: Int? = null
+        val preferredHourUtc: Int? = null,
     )
 
     @Serializable
     data class TaskListResponse(
-        val tasks: List<Task>
+        val tasks: List<Task>,
     )
 
     @Serializable
     data class TaskRunResponse(
         val task: Task,
-        val outputJson: String? = null
+        val outputJson: String? = null,
     )
 
     @Serializable
     data class TaskTickResponse(
-        val results: List<TaskRunResponse>
+        val results: List<TaskRunResponse>,
     )
 
     // --- Endpoints ---
@@ -43,12 +45,13 @@ fun Route.taskRoute(services: ServiceRegistry) {
     // Create a dark-window task
     post("/api/tasks/dark-window") {
         val request = call.receive<CreateDarkWindowTaskRequest>()
-        val task = services.taskRunner.createDarkWindowTask(
-            name = request.name,
-            request = request.darkWindowRequest,
-            frequency = request.frequency,
-            preferredHourUtc = request.preferredHourUtc
-        )
+        val task =
+            services.taskRunner.createDarkWindowTask(
+                name = request.name,
+                request = request.darkWindowRequest,
+                frequency = request.frequency,
+                preferredHourUtc = request.preferredHourUtc,
+            )
         call.respond(task)
     }
 
@@ -60,9 +63,10 @@ fun Route.taskRoute(services: ServiceRegistry) {
 
     // Get one task
     get("/api/tasks/{id}") {
-        val id = call.parameters["id"] ?: return@get call.respondText(
-            "Missing id", status = io.ktor.http.HttpStatusCode.BadRequest
-        )
+        val id =
+            call.parameters["id"] ?: return@get call.respondText(
+                "Missing id", status = io.ktor.http.HttpStatusCode.BadRequest,
+            )
         val task = services.taskRepository.findById(id)
         if (task == null) {
             call.respondText("Task not found", status = io.ktor.http.HttpStatusCode.NotFound)
@@ -73,12 +77,14 @@ fun Route.taskRoute(services: ServiceRegistry) {
 
     // Run a task once, immediately
     post("/api/tasks/{id}/run") {
-        val id = call.parameters["id"] ?: return@post call.respondText(
-            "Missing id", status = io.ktor.http.HttpStatusCode.BadRequest
-        )
+        val id =
+            call.parameters["id"] ?: return@post call.respondText(
+                "Missing id", status = io.ktor.http.HttpStatusCode.BadRequest,
+            )
 
-        val result = services.taskRunner.runTask(id)
-            ?: return@post call.respondText("Task not found", status = io.ktor.http.HttpStatusCode.NotFound)
+        val result =
+            services.taskRunner.runTask(id)
+                ?: return@post call.respondText("Task not found", status = io.ktor.http.HttpStatusCode.NotFound)
 
         call.respond(TaskRunResponse(task = result.task, outputJson = result.outputJson))
     }
@@ -87,14 +93,16 @@ fun Route.taskRoute(services: ServiceRegistry) {
     post("/api/tasks/tick") {
         val runResults = services.taskRunner.runAllEnabled()
 
-        val response = TaskTickResponse(
-            results = runResults.map { result ->
-                TaskRunResponse(
-                    task = result.task,
-                    outputJson = result.outputJson
-                )
-            }
-        )
+        val response =
+            TaskTickResponse(
+                results =
+                    runResults.map { result ->
+                        TaskRunResponse(
+                            task = result.task,
+                            outputJson = result.outputJson,
+                        )
+                    },
+            )
 
         call.respond(response)
     }

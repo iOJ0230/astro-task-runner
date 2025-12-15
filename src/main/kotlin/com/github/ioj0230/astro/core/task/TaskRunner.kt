@@ -13,13 +13,16 @@ import java.util.UUID
 
 data class TaskRunResult(
     val task: Task,
-    val outputJson: String? = null
+    val outputJson: String? = null,
 )
 
 interface TaskRepository {
     fun create(task: Task): Task
+
     fun findById(id: String): Task?
+
     fun findAll(): List<Task>
+
     fun update(task: Task): Task
 }
 
@@ -28,28 +31,32 @@ class TaskRunner(
     private val astroMathService: AstroMathService,
     private val astroEventService: AstroEventService,
     private val skySummaryService: SkySummaryService,
-    private val json: Json = Json { ignoreUnknownKeys = true; prettyPrint = true },
+    private val json: Json =
+        Json {
+            ignoreUnknownKeys = true
+            prettyPrint = true
+        },
     private val clock: Clock = Clock.systemUTC(),
 ) {
-
     private fun nowUtc(): OffsetDateTime = OffsetDateTime.now(clock)
 
     fun createDarkWindowTask(
         name: String,
         request: DarkWindowRequest,
         frequency: TaskFrequency = TaskFrequency.MANUAL,
-        preferredHourUtc: Int? = null
+        preferredHourUtc: Int? = null,
     ): Task {
         val now = nowUtc().toString()
-        val task = Task(
-            id = UUID.randomUUID().toString(),
-            name = name,
-            type = "dark-window",
-            payloadJson = json.encodeToString(DarkWindowRequest.serializer(), request),
-            createdAtIso = now,
-            frequency = frequency,
-            preferredHourUtc = preferredHourUtc
-        )
+        val task =
+            Task(
+                id = UUID.randomUUID().toString(),
+                name = name,
+                type = "dark-window",
+                payloadJson = json.encodeToString(DarkWindowRequest.serializer(), request),
+                createdAtIso = now,
+                frequency = frequency,
+                preferredHourUtc = preferredHourUtc,
+            )
         return taskRepository.create(task)
     }
 
@@ -59,8 +66,8 @@ class TaskRunner(
             return TaskRunResult(
                 existing.copy(
                     lastStatus = TaskStatus.FAILED,
-                    lastError = "Task disabled"
-                )
+                    lastError = "Task disabled",
+                ),
             )
         }
 
@@ -69,11 +76,12 @@ class TaskRunner(
         return when (existing.type) {
             "dark-window" -> runDarkWindowTask(existing, nowIso)
             else -> {
-                val updated = existing.copy(
-                    lastRunAtIso = nowIso,
-                    lastStatus = TaskStatus.FAILED,
-                    lastError = "Unknown task type: ${existing.type}"
-                )
+                val updated =
+                    existing.copy(
+                        lastRunAtIso = nowIso,
+                        lastStatus = TaskStatus.FAILED,
+                        lastError = "Unknown task type: ${existing.type}",
+                    )
                 TaskRunResult(taskRepository.update(updated))
             }
         }
@@ -83,48 +91,57 @@ class TaskRunner(
         val all = taskRepository.findAll()
         val now = nowUtc()
 
-        val due = all.filter { task ->
-            task.enabled && isDue(task, now)
-        }
+        val due =
+            all.filter { task ->
+                task.enabled && isDue(task, now)
+            }
 
         return due.map { task ->
             runTask(task.id) ?: TaskRunResult(
-                task = task.copy(
-                    lastStatus = TaskStatus.FAILED,
-                    lastError = "Task disappeared before tick run"
-                ),
-                outputJson = null
+                task =
+                    task.copy(
+                        lastStatus = TaskStatus.FAILED,
+                        lastError = "Task disappeared before tick run",
+                    ),
+                outputJson = null,
             )
         }
     }
 
-    private fun runDarkWindowTask(task: Task, nowIso: String): TaskRunResult {
-        val request = json.decodeFromString(
-            DarkWindowRequest.serializer(),
-            task.payloadJson
-        )
+    private fun runDarkWindowTask(
+        task: Task,
+        nowIso: String,
+    ): TaskRunResult {
+        val request =
+            json.decodeFromString(
+                DarkWindowRequest.serializer(),
+                task.payloadJson,
+            )
 
         val date = LocalDate.parse(request.dateIso)
 
-        val window = astroMathService.computeDarkWindow(
-            latitude = request.latitude,
-            longitude = request.longitude,
-            date = date,
-            timeZoneId = request.timeZoneId
-        )
+        val window =
+            astroMathService.computeDarkWindow(
+                latitude = request.latitude,
+                longitude = request.longitude,
+                date = date,
+                timeZoneId = request.timeZoneId,
+            )
 
-        val response = DarkWindowResponse(
-            window = window,
-            notes = "Task-run dark window result."
-        )
+        val response =
+            DarkWindowResponse(
+                window = window,
+                notes = "Task-run dark window result.",
+            )
 
         val outputJson = json.encodeToString(DarkWindowResponse.serializer(), response)
 
-        val updated = task.copy(
-            lastRunAtIso = nowIso,
-            lastStatus = TaskStatus.SUCCESS,
-            lastError = null
-        )
+        val updated =
+            task.copy(
+                lastRunAtIso = nowIso,
+                lastStatus = TaskStatus.SUCCESS,
+                lastError = null,
+            )
 
         return TaskRunResult(taskRepository.update(updated), outputJson)
     }
@@ -133,14 +150,20 @@ class TaskRunner(
      * Scheduling helpers
      */
 
-    private fun isDue(task: Task, now: OffsetDateTime): Boolean {
+    private fun isDue(
+        task: Task,
+        now: OffsetDateTime,
+    ): Boolean {
         return when (task.frequency) {
             TaskFrequency.MANUAL -> false
             TaskFrequency.DAILY -> isDueDaily(task, now)
         }
     }
 
-    private fun isDueDaily(task: Task, now: OffsetDateTime): Boolean {
+    private fun isDueDaily(
+        task: Task,
+        now: OffsetDateTime,
+    ): Boolean {
         val preferredHour = task.preferredHourUtc ?: 0
         val nowDate = now.toLocalDate()
         val nowHour = now.hour

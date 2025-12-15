@@ -9,7 +9,7 @@ data class SkySummaryRequest(
     val latitude: Double,
     val longitude: Double,
     val dateIso: String,
-    val timeZoneId: String
+    val timeZoneId: String,
 )
 
 @Serializable
@@ -19,5 +19,5 @@ data class SkySummaryResponse(
     val darkWindow: DarkWindow,
     val meteors: List<MeteorShowerEvent>,
     val overallSummary: String,
-    val notes: String? = null
+    val notes: String? = null,
 )
