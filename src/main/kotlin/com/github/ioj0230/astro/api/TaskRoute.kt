@@ -5,7 +5,6 @@ import com.github.ioj0230.astro.core.darkwindow.DarkWindowRequest
 import com.github.ioj0230.astro.core.task.Task
 import com.github.ioj0230.astro.core.task.TaskFrequency
 import io.ktor.server.application.call
-import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
@@ -14,7 +13,6 @@ import io.ktor.server.routing.post
 import kotlinx.serialization.Serializable
 
 fun Route.taskRoute(services: ServiceRegistry) {
-    // --- API models just for creation / running ---
 
     @Serializable
     data class CreateDarkWindowTaskRequest(
@@ -39,21 +37,6 @@ fun Route.taskRoute(services: ServiceRegistry) {
     data class TaskTickResponse(
         val results: List<TaskRunResponse>,
     )
-
-    // --- Endpoints ---
-
-    // Create a dark-window task
-    post("/api/tasks/dark-window") {
-        val request = call.receive<CreateDarkWindowTaskRequest>()
-        val task =
-            services.taskRunner.createDarkWindowTask(
-                name = request.name,
-                request = request.darkWindowRequest,
-                frequency = request.frequency,
-                preferredHourUtc = request.preferredHourUtc,
-            )
-        call.respond(task)
-    }
 
     // List all tasks
     get("/api/tasks") {
