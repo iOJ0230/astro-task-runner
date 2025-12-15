@@ -3,6 +3,8 @@ package com.github.ioj0230.astro
 import com.github.ioj0230.astro.api.darkWindowRoute
 import com.github.ioj0230.astro.api.meteorAlertRoute
 import com.github.ioj0230.astro.api.skySummaryRoute
+import com.github.ioj0230.astro.api.task.darkWindowTaskRoute
+import com.github.ioj0230.astro.api.task.meteorAlertTaskRoute
 import com.github.ioj0230.astro.api.taskRoute
 import com.github.ioj0230.astro.core.math.AstroMathService
 import com.github.ioj0230.astro.core.meteor.AstroEventService
@@ -70,9 +72,14 @@ fun Application.module() {
             call.respondText("OK")
         }
 
+        // run-now APIs
         darkWindowRoute(services)
         meteorAlertRoute(services)
         skySummaryRoute(services)
+
+        // task APIs
         taskRoute(services)
+        darkWindowTaskRoute(services)
+        meteorAlertTaskRoute(services)
     }
 }
