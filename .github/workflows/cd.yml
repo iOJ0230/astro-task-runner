@@ -34,8 +34,27 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Build image with Cloud Build
-        run: gcloud builds submit --tag gcr.io/${{ secrets.GCP_PROJECT_ID }}/astro-task-runner
+      - name: Build image with Cloud Build (wait for success)
+        run: |
+            BUILD_ID=$(gcloud builds submit --tag gcr.io/${{ secrets.GCP_PROJECT_ID }}/astro-task-runner --format="value(id)" --quiet)
+            echo "Build ID: $BUILD_ID"
+            
+            while true; do
+              STATUS=$(gcloud builds describe "$BUILD_ID" --format="value(status)")
+              echo "Build status: $STATUS"
+            
+              if [ "$STATUS" = "SUCCESS" ]; then
+                break
+              fi
+            
+              if [ "$STATUS" = "FAILURE" ] || [ "$STATUS" = "CANCELLED" ] || [ "$STATUS" = "TIMEOUT" ]; then
+                echo "Build did not succeed. Printing logs:"
+                gcloud builds log "$BUILD_ID" || true
+                exit 1
+              fi
+            
+              sleep 5
+            done
 
       - name: Deploy to Cloud Run
         run: gcloud run deploy astro-task-runner --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/astro-task-runner --platform=managed --region=${{ secrets.GCP_REGION }} --allow-unauthenticated
