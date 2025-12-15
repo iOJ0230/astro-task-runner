@@ -4,7 +4,10 @@ import com.github.ioj0230.astro.core.darkwindow.DarkWindowRequest
 import com.github.ioj0230.astro.core.darkwindow.DarkWindowResponse
 import com.github.ioj0230.astro.core.math.AstroMathService
 import com.github.ioj0230.astro.core.meteor.AstroEventService
+import com.github.ioj0230.astro.core.meteor.MeteorAlertRequest
+import com.github.ioj0230.astro.core.meteor.MeteorAlertResponse
 import com.github.ioj0230.astro.core.sky.SkySummaryService
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import java.time.Clock
 import java.time.LocalDate
@@ -15,16 +18,6 @@ data class TaskRunResult(
     val task: Task,
     val outputJson: String? = null,
 )
-
-interface TaskRepository {
-    fun create(task: Task): Task
-
-    fun findById(id: String): Task?
-
-    fun findAll(): List<Task>
-
-    fun update(task: Task): Task
-}
 
 class TaskRunner(
     private val taskRepository: TaskRepository,
@@ -40,50 +33,83 @@ class TaskRunner(
 ) {
     private fun nowUtc(): OffsetDateTime = OffsetDateTime.now(clock)
 
+    /**
+     * Generic task creation helper.
+     *
+     * This keeps TaskRunner as a "deep module":
+     * routes supply a request payload, TaskRunner handles ID/time/serialization/storage.
+     */
+    fun <T> createTask(
+        name: String,
+        type: TaskType,
+        payload: T,
+        payloadSerializer: KSerializer<T>,
+        frequency: TaskFrequency = TaskFrequency.MANUAL,
+        preferredHourUtc: Int? = null,
+        enabled: Boolean = true,
+    ): Task {
+        require(name.isNotBlank()) { "name must not be blank" }
+        if (frequency == TaskFrequency.DAILY) {
+            require(preferredHourUtc != null) { "preferredHourUtc is required when frequency is DAILY" }
+            require(preferredHourUtc in 0..23) { "preferredHourUtc must be within 0..23" }
+        }
+        if (preferredHourUtc != null) {
+            require(preferredHourUtc in 0..23) { "preferredHourUtc must be within 0..23" }
+        }
+
+        val nowIso = nowUtc().toString()
+
+        val task =
+            Task(
+                id = UUID.randomUUID().toString(),
+                name = name,
+                type = type,
+                payloadJson = json.encodeToString(payloadSerializer, payload),
+                createdAtIso = nowIso,
+                frequency = frequency,
+                preferredHourUtc = preferredHourUtc,
+                enabled = enabled,
+            )
+
+        return taskRepository.create(task)
+    }
+
+    /**
+     * Backwards-compatible wrapper (your existing API can keep calling this).
+     */
     fun createDarkWindowTask(
         name: String,
         request: DarkWindowRequest,
         frequency: TaskFrequency = TaskFrequency.MANUAL,
         preferredHourUtc: Int? = null,
     ): Task {
-        val now = nowUtc().toString()
-        val task =
-            Task(
-                id = UUID.randomUUID().toString(),
-                name = name,
-                type = "dark-window",
-                payloadJson = json.encodeToString(DarkWindowRequest.serializer(), request),
-                createdAtIso = now,
-                frequency = frequency,
-                preferredHourUtc = preferredHourUtc,
-            )
-        return taskRepository.create(task)
+        return createTask(
+            name = name,
+            type = TaskType.DARK_WINDOW,
+            payload = request,
+            payloadSerializer = DarkWindowRequest.serializer(),
+            frequency = frequency,
+            preferredHourUtc = preferredHourUtc,
+            enabled = true,
+        )
     }
 
     fun runTask(taskId: String): TaskRunResult? {
         val existing = taskRepository.findById(taskId) ?: return null
         if (!existing.enabled) {
-            return TaskRunResult(
+            val updated =
                 existing.copy(
                     lastStatus = TaskStatus.FAILED,
                     lastError = "Task disabled",
-                ),
-            )
+                )
+            return TaskRunResult(taskRepository.update(updated), outputJson = null)
         }
 
         val nowIso = nowUtc().toString()
 
         return when (existing.type) {
-            "dark-window" -> runDarkWindowTask(existing, nowIso)
-            else -> {
-                val updated =
-                    existing.copy(
-                        lastRunAtIso = nowIso,
-                        lastStatus = TaskStatus.FAILED,
-                        lastError = "Unknown task type: ${existing.type}",
-                    )
-                TaskRunResult(taskRepository.update(updated))
-            }
+            TaskType.DARK_WINDOW -> runDarkWindowTask(existing, nowIso)
+            TaskType.METEOR_ALERT -> runMeteorAlertTask(existing, nowIso)
         }
     }
 
@@ -146,6 +172,46 @@ class TaskRunner(
         return TaskRunResult(taskRepository.update(updated), outputJson)
     }
 
+    private fun runMeteorAlertTask(
+        task: Task,
+        nowIso: String,
+    ): TaskRunResult {
+        return try {
+            val request =
+                json.decodeFromString(
+                    MeteorAlertRequest.serializer(),
+                    task.payloadJson,
+                )
+
+            val response: MeteorAlertResponse =
+                astroEventService.upcomingMeteorShowers(request)
+
+            val outputJson =
+                json.encodeToString(
+                    MeteorAlertResponse.serializer(),
+                    response,
+                )
+
+            val updated =
+                task.copy(
+                    lastRunAtIso = nowIso,
+                    lastStatus = TaskStatus.SUCCESS,
+                    lastError = null,
+                )
+
+            TaskRunResult(taskRepository.update(updated), outputJson)
+        } catch (e: Exception) {
+            val updated =
+                task.copy(
+                    lastRunAtIso = nowIso,
+                    lastStatus = TaskStatus.FAILED,
+                    lastError = e.message ?: "Meteor alert task failed",
+                )
+
+            TaskRunResult(taskRepository.update(updated), outputJson = null)
+        }
+    }
+
     /**
      * Scheduling helpers
      */
@@ -176,7 +242,7 @@ class TaskRunner(
         val lastRun = OffsetDateTime.parse(task.lastRunAtIso)
         val lastDate = lastRun.toLocalDate()
 
-        // If task already ran it today, don't run again
+        // If task already ran today, don't run again
         if (lastDate.isEqual(nowDate)) {
             return false
         }

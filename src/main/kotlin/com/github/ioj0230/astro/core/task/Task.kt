@@ -6,9 +6,7 @@ import kotlinx.serialization.Serializable
 data class Task(
     val id: String,
     val name: String,
-    // "dark-window", "meteor-alert", "sky-summary"
-    // TODO: Make type as enum
-    val type: String,
+    val type: TaskType,
     // JSON for the underlying request
     val payloadJson: String,
     val enabled: Boolean = true,
