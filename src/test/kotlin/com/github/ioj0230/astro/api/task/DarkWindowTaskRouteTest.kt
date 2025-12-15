@@ -18,115 +18,116 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class DarkWindowTaskRouteTest {
-
     private val json = Json { ignoreUnknownKeys = true }
 
     @Test
-    fun `should create + run dark-window task and succeeds`() = testApplication {
-        application {
-            module()
-        }
-
-        // Create dark-window task
-        val createResponse =
-            client.post("/api/tasks/dark-window") {
-                contentType(ContentType.Application.Json)
-                setBody(
-                    """
-                    {
-                      "name": "Dark window Cebu",
-                      "darkWindowRequest": {
-                        "latitude": 10.3111,
-                        "longitude": 123.8854,
-                        "dateIso": "2025-12-14",
-                        "timeZoneId": "Asia/Manila"
-                      },
-                      "frequency": "MANUAL",
-                      "enabled": true
-                    }
-                    """.trimIndent(),
-                )
+    fun `should create + run dark-window task and succeeds`() =
+        testApplication {
+            application {
+                module()
             }
 
-        assertEquals(HttpStatusCode.OK, createResponse.status)
+            // Create dark-window task
+            val createResponse =
+                client.post("/api/tasks/dark-window") {
+                    contentType(ContentType.Application.Json)
+                    setBody(
+                        """
+                        {
+                          "name": "Dark window Cebu",
+                          "darkWindowRequest": {
+                            "latitude": 10.3111,
+                            "longitude": 123.8854,
+                            "dateIso": "2025-12-14",
+                            "timeZoneId": "Asia/Manila"
+                          },
+                          "frequency": "MANUAL",
+                          "enabled": true
+                        }
+                        """.trimIndent(),
+                    )
+                }
 
-        val createdTask =
-            json.decodeFromString<Task>(
-                createResponse.bodyAsText(),
-            )
+            assertEquals(HttpStatusCode.OK, createResponse.status)
 
-        assertEquals(TaskType.DARK_WINDOW, createdTask.type)
-        assertNotNull(createdTask.id)
+            val createdTask =
+                json.decodeFromString<Task>(
+                    createResponse.bodyAsText(),
+                )
 
-        // Run the task
-        val runResponse =
-            client.post("/api/tasks/${createdTask.id}/run")
+            assertEquals(TaskType.DARK_WINDOW, createdTask.type)
+            assertNotNull(createdTask.id)
 
-        assertEquals(HttpStatusCode.OK, runResponse.status)
+            // Run the task
+            val runResponse =
+                client.post("/api/tasks/${createdTask.id}/run")
 
-        val runResult =
-            json.decodeFromString<TaskRunApiResponse>(
-                runResponse.bodyAsText(),
-            )
+            assertEquals(HttpStatusCode.OK, runResponse.status)
 
-        // Assertions on execution result
-        assertEquals(TaskStatus.SUCCESS, runResult.task.lastStatus)
-        assertNotNull(runResult.outputJson)
+            val runResult =
+                json.decodeFromString<TaskRunApiResponse>(
+                    runResponse.bodyAsText(),
+                )
 
-        // Loose assertion: output should mention the domain object
-        assertTrue(
-            runResult.outputJson.contains("window", ignoreCase = true) ||
+            // Assertions on execution result
+            assertEquals(TaskStatus.SUCCESS, runResult.task.lastStatus)
+            assertNotNull(runResult.outputJson)
+
+            // Loose assertion: output should mention the domain object
+            assertTrue(
+                runResult.outputJson.contains("window", ignoreCase = true) ||
                     runResult.outputJson.contains("dark", ignoreCase = true),
-            "outputJson should contain dark window information",
-        )
-    }
+                "outputJson should contain dark window information",
+            )
+        }
 
     @Test
-    fun `should run disabled dark-window task and fails`() = testApplication {
-        application {
-            module()
-        }
-
-        // Create disabled dark-window task
-        val createResponse =
-            client.post("/api/tasks/dark-window") {
-                contentType(ContentType.Application.Json)
-                setBody(
-                    """
-                    {
-                      "name": "Disabled dark window task",
-                      "darkWindowRequest": {
-                        "latitude": 10.3111,
-                        "longitude": 123.8854,
-                        "dateIso": "2025-12-14",
-                        "timeZoneId": "Asia/Manila"
-                      },
-                      "frequency": "MANUAL",
-                      "enabled": false
-                    }
-                    """.trimIndent(),
-                )
+    fun `should run disabled dark-window task and fails`() =
+        testApplication {
+            application {
+                module()
             }
 
-        assertEquals(HttpStatusCode.OK, createResponse.status)
+            // Create disabled dark-window task
+            val createResponse =
+                client.post("/api/tasks/dark-window") {
+                    contentType(ContentType.Application.Json)
+                    setBody(
+                        """
+                        {
+                          "name": "Disabled dark window task",
+                          "darkWindowRequest": {
+                            "latitude": 10.3111,
+                            "longitude": 123.8854,
+                            "dateIso": "2025-12-14",
+                            "timeZoneId": "Asia/Manila"
+                          },
+                          "frequency": "MANUAL",
+                          "enabled": false
+                        }
+                        """.trimIndent(),
+                    )
+                }
 
-        val createdTask =
-            json.decodeFromString<Task>(
-                createResponse.bodyAsText(),
-            )
+            assertEquals(HttpStatusCode.OK, createResponse.status)
 
-        val runResponse =
-            client.post("/api/tasks/${createdTask.id}/run")
+            val createdTask =
+                json.decodeFromString<Task>(
+                    createResponse.bodyAsText(),
+                )
 
-        assertEquals(HttpStatusCode.OK, runResponse.status)
+            val runResponse =
+                client.post("/api/tasks/${createdTask.id}/run")
 
-        val runResult =
-            json.decodeFromString<TaskRunApiResponse>(
-                runResponse.bodyAsText(),
-            )
+            assertEquals(HttpStatusCode.OK, runResponse.status)
 
-        assertEquals(TaskStatus.FAILED, runResult.task.lastStatus)
-        assertEquals("Task disabled", runResult.task.lastError)
-        assertEquals(null, runResult.outputJson)
-    }
+            val runResult =
+                json.decodeFromString<TaskRunApiResponse>(
+                    runResponse.bodyAsText(),
+                )
+
+            assertEquals(TaskStatus.FAILED, runResult.task.lastStatus)
+            assertEquals("Task disabled", runResult.task.lastError)
+            assertEquals(null, runResult.outputJson)
+        }
 }

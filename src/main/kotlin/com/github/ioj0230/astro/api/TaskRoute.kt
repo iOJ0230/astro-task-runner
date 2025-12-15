@@ -13,7 +13,6 @@ import io.ktor.server.routing.post
 import kotlinx.serialization.Serializable
 
 fun Route.taskRoute(services: ServiceRegistry) {
-
     @Serializable
     data class CreateDarkWindowTaskRequest(
         val name: String,
