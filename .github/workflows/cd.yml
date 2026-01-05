@@ -30,29 +30,45 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
           credentials_json: ${{ secrets.GCP_SA_KEY }}
+          create_credentials_file: true
+          export_environment_variables: true
 
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Sanity check auth (debug)
+      - name: Sanity check auth (safe debug)
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+          CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: ${{ steps.auth.outputs.credentials_file_path }}
         run: |
+          set -e
+          test -f "$GOOGLE_APPLICATION_CREDENTIALS"
           gcloud auth list
-          gcloud config list
+          gcloud config set project "${{ secrets.GCP_PROJECT_ID }}"
+          gcloud projects describe "${{ secrets.GCP_PROJECT_ID }}" --format="value(projectId)"
 
       - name: Build image with Cloud Build
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+          CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: ${{ steps.auth.outputs.credentials_file_path }}
         run: |
+          set -e
+          gcloud config set project "${{ secrets.GCP_PROJECT_ID }}"
           gcloud builds submit \
-            --project="${{ secrets.GCP_PROJECT_ID }}" \
             --tag "gcr.io/${{ secrets.GCP_PROJECT_ID }}/astro-task-runner" \
             --quiet
 
       - name: Deploy to Cloud Run
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+          CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: ${{ steps.auth.outputs.credentials_file_path }}
         run: |
+          set -e
+          gcloud config set project "${{ secrets.GCP_PROJECT_ID }}"
           gcloud run deploy astro-task-runner \
-            --project="${{ secrets.GCP_PROJECT_ID }}" \
             --image "gcr.io/${{ secrets.GCP_PROJECT_ID }}/astro-task-runner" \
             --platform=managed \
-            --region="${{ secrets.GCP_REGION }}" \
+            --region "${{ secrets.GCP_REGION }}" \
             --allow-unauthenticated
