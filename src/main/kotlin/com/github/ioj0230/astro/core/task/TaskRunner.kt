@@ -24,11 +24,7 @@ class TaskRunner(
     private val astroMathService: AstroMathService,
     private val astroEventService: AstroEventService,
     private val skySummaryService: SkySummaryService,
-    private val json: Json =
-        Json {
-            ignoreUnknownKeys = true
-            prettyPrint = true
-        },
+    private val json: Json,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private fun nowUtc(): OffsetDateTime = OffsetDateTime.now(clock)

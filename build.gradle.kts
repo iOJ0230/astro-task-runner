@@ -48,6 +48,9 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation("io.ktor:ktor-server-tests-jvm:2.3.11")
     testImplementation("io.ktor:ktor-client-content-negotiation-jvm:2.3.11")
+
+    // Firestore
+    implementation("com.google.cloud:google-cloud-firestore:3.24.3")
 }
 
 tasks {
