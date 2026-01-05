@@ -47,7 +47,7 @@ jobs:
           test -f "$GOOGLE_APPLICATION_CREDENTIALS"
           gcloud auth list
           gcloud config set project "${{ secrets.GCP_PROJECT_ID }}"
-          gcloud projects describe "${{ secrets.GCP_PROJECT_ID }}" --format="value(projectId)"
+          gcloud config get-value project
 
       - name: Build image with Cloud Build
         env:
