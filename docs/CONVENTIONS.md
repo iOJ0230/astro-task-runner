@@ -47,7 +47,7 @@ scheme.
 Also note: `POST /api/tasks/dark-window` and `POST
 /api/tasks/meteor-alert` are two routes doing the same thing
 (`TaskRunner.createTask` is already fully generic over `TaskType`). See
-`CLAUDE.md` roadmap item 6 — collapsing these to one `POST /api/tasks`
+`CLAUDE.md` roadmap item 3 — collapsing these to one `POST /api/tasks`
 with `type` in the body is the more RESTful shape *and* removes
 duplicated route code, which is the rare refactor that's a strict
 improvement on both axes.
@@ -74,41 +74,49 @@ more painful than starting with it.
   "envelope" (name, frequency, preferredHourUtc, enabled) is an API-layer
   concern; the payload inside it is a domain concern.
 - **Don't redeclare a DTO locally inside a route function if a shared one
-  already exists.** `TaskRoute.kt` currently does this (a local
+  already exists.** `TaskRoute.kt` used to do this (a local, unused
   `CreateDarkWindowTaskRequest` shadowing the real one in
-  `api/task/model/`) — it's dead code, not a pattern to copy. See
-  `CLAUDE.md` → Known gaps #3.
+  `api/task/model/`) — it's been removed. Response DTOs
+  (`TaskListResponse`, `TaskRunResponse`, `TaskTickResponse`) also live in
+  `api/task/model/TaskResponses.kt` now, not inline in the route file —
+  same reasoning as the request-DTO split above.
 - Defaults belong on the DTO (`frequency: TaskFrequency =
   TaskFrequency.MANUAL`), not re-derived in route handlers — this is
   already followed consistently, keep it that way.
 
-## Error handling — currently ad hoc, needs a decision
+## Error handling
 
-Right now, error responses are inconsistent:
-
-- `TaskRoute.kt` hand-rolls `call.respondText("Missing id", status =
-  HttpStatusCode.BadRequest)` — plain text, not JSON.
-- Everything else relies on Ktor's default exception behavior (an
-  unhandled exception → generic 500) because `ktor-server-status-pages-jvm`
-  is a dependency that's never `install()`-ed.
-- Validation failures in `TaskRunner.createTask` use Kotlin's `require()`,
-  which throws `IllegalArgumentException` — currently that propagates as
-  an unhandled 500, not a 400, because nothing catches it at the route
-  layer.
-
-Per Masse's *REST API Design Rulebook* and Amundsen's *Web API Cookbook*,
-pick **one** structured error body and use it everywhere, e.g.:
+`Application.module()` installs Ktor's `StatusPages` plugin and maps every
+error response to one consistent JSON envelope
+(`api/model/ApiError.kt`):
 
 ```json
 { "error": { "code": "TASK_NOT_FOUND", "message": "No task with id abc123" } }
 ```
 
-and map exceptions to status codes centrally via Ktor's `StatusPages`
-plugin (already a dependency — just needs `install(StatusPages) { ... }`
-in `Application.kt`), instead of each route deciding ad hoc. Until that
-lands, do not add a fourth error-response style — match `TaskRoute.kt`'s
-existing plain-text pattern rather than inventing another one, and note
-the debt.
+Three exception types are mapped explicitly to `400`, because they're the
+ones this codebase actually throws for bad client input:
+
+- `IllegalArgumentException` — `TaskRunner`'s `require()` validation
+  (missing/blank name, `preferredHourUtc` out of `0..23`, etc.).
+- `DateTimeException` — `LocalDate.parse(dateIso)` / `ZoneId.of(timeZoneId)`
+  failures (covers `DateTimeParseException` and `ZoneRulesException`, both
+  subtypes).
+- `JsonConvertException` — malformed/mistyped request bodies.
+
+Everything else falls through to a generic `500` with a fixed
+`INTERNAL_ERROR` message (never the raw exception message — don't leak
+internals to the client) and logs the real cause server-side.
+
+**When adding a new failure path:** if it's client-caused (bad input,
+not-found, disabled resource), respond directly with `ApiErrorBody` and
+the right status code (see `TaskRoute.kt`'s `missingIdError()` /
+`taskNotFoundError()` for the pattern) rather than throwing — reserve
+thrown exceptions + `StatusPages` for validation deep inside `core`
+(`TaskRunner`, etc.) where the route layer doesn't have a natural place to
+check first. If a new exception type becomes common enough to need its
+own mapping, add it next to the existing `exception<...>` blocks in
+`Application.kt` rather than letting it fall through to the generic 500.
 
 ## Kotlin style
 
@@ -143,14 +151,25 @@ the debt.
   wall-clock time. Keep new scheduling/time-dependent tests deterministic
   the same way.
 - Integration tests (`*RouteTest`) use Ktor's `testApplication { application
-  { module() } }` to exercise real routing + serialization. **Caveat:**
-  this currently means these tests always go through the real
-  `FirestoreTaskRepository` — see `CLAUDE.md` → Known gaps #1. Don't add
-  more tests on this pattern until that's fixed; the tests are useful as
-  written but not reliably runnable in CI.
+  { testModule() } }` (not `module()`) to exercise real routing +
+  serialization without touching Firestore — `testModule()` (in
+  `src/test/.../TestApplicationModule.kt`) is `module()` with
+  `InMemoryTaskRepository` injected. Always use `testModule()` in new
+  integration tests; calling `module()` directly reintroduces a hard
+  dependency on live GCP credentials.
 - Test names use backtick-quoted sentences (`` `should not run MANUAL
   tasks`() ``) — keep using full sentences, not `testX()`/camelCase names;
   it's the existing convention and it's more readable in CI output.
+- **Always `import kotlin.test.Test`, never `org.junit.Test`.** The build
+  runs on JUnit Platform (`useJUnitPlatform()` in `build.gradle.kts`) with
+  no vintage engine configured, so a JUnit 4-style `@Test` (from
+  `org.junit.Test`, available transitively via `ktor-server-tests-jvm`)
+  compiles fine but is **silently never discovered or run** — no error,
+  no warning, just a test that never executes. This happened for real:
+  `TaskRunnerSchedulingTest` used `org.junit.Test` and both of its tests
+  (covering `MANUAL` vs `DAILY` scheduling) had never run until this was
+  caught. If a test file isn't showing up in `build/test-results/test/`
+  after `./gradlew test`, check the `@Test` import first.
 
 ## Commit messages
 

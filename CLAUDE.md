@@ -25,14 +25,15 @@ as much as features.
 ./gradlew test              # unit + Ktor integration tests
 ```
 
-`GET /health` → `OK` is the fastest way to confirm the server is up.
+`GET /health` → `OK` is the fastest way to confirm the server is up. See
+`docs/SETUP.md` for provisioning the GCP project, Firestore, and CD secrets
+from scratch — the README alone doesn't cover that.
 
 **Gotcha:** `Application.module()` wires a real `FirestoreTaskRepository`
-via `FirestoreOptions.getDefaultInstance().service`, which needs Application
-Default Credentials. Running locally without `gcloud auth
-application-default login` (or `GOOGLE_APPLICATION_CREDENTIALS`) will fail
-at startup. There is no local/emulator fallback wired in yet — see Known
-gaps.
+via `FirestoreOptions.getDefaultInstance().service` by default, which needs
+Application Default Credentials. Running `./gradlew run` locally without
+`gcloud auth application-default login` (or `GOOGLE_APPLICATION_CREDENTIALS`)
+will fail at startup. Tests don't hit this — see "Resolved" #1 below.
 
 ## Architecture at a glance
 
@@ -56,70 +57,117 @@ data class built once in `module()` and threaded through route functions.
 Keep it that way until there's an actual reason (e.g. per-request scoping)
 to reach for something heavier.
 
-## Known gaps (fix these before adding features, or at least don't make them worse)
+## Known gaps
 
-1. **Integration tests hit real Firestore.** `TaskRouteTest`,
-   `DarkWindowTaskRouteTest`, and `MeteorAlertTaskRouteTest` all call
-   `module()` directly, which pulls in `FirestoreTaskRepository`. CI's
-   `ci.yml` has no GCP auth step, so these tests either fail closed or
-   silently depend on ambient credentials in whatever environment runs
-   them — that's not reproducible. Fix: make `module()` accept an injected
-   `TaskRepository` (default to Firestore, override to
-   `InMemoryTaskRepository` in tests), or extract a `testModule()`. This is
-   the single highest-priority fix — it undermines the whole test suite's
-   credibility.
-2. **`ktor-server-status-pages-jvm` is a declared dependency that's never
-   installed.** `Application.kt` never calls `install(StatusPages)`. Errors
-   currently surface as raw exceptions or ad-hoc
-   `call.respondText(..., status = ...)` calls scattered across routes
-   (see `TaskRoute.kt`). Either wire up `StatusPages` for a consistent
-   JSON error envelope, or drop the dependency — don't leave it dangling.
-3. **Duplicate DTOs.** `TaskRoute.kt` declares its own local
-   `CreateDarkWindowTaskRequest`, `TaskListResponse`, `TaskRunResponse`,
-   `TaskTickResponse` — `CreateDarkWindowTaskRequest` shadows the real one
-   in `api/task/model/` and is unused. Delete the local copy; it's dead
-   code that will confuse the next person (or the next Claude session).
-4. **`InMemoryTaskRepository` is prod-dead code.** Nothing in
-   `Application.kt` wires it up anymore (Firestore replaced it); it only
-   exists for `TaskRunnerSchedulingTest`. That's a legitimate use, but say
-   so — a comment or this doc entry — so nobody "cleans it up" by mistake
-   or, conversely, wonders why it's still there.
-5. **`POST /api/tasks/tick` has no auth.** It's meant to be hit by Cloud
-   Scheduler but is a public, unauthenticated endpoint that runs arbitrary
-   stored tasks. Fine for a hobby project behind an obscure URL; not fine
-   the moment this is presented as production-grade. At minimum, check a
-   shared-secret header before this goes further.
-6. **All astronomy math is placeholder.** `DummyAstroMathService` assumes
+The six gaps originally logged here (Firestore-coupled tests, missing
+StatusPages, a dead duplicate DTO, an undocumented `InMemoryTaskRepository`,
+an unauthenticated tick endpoint, and placeholder astronomy) have mostly
+been addressed — see "Resolved" below for what changed and why. One item
+(dummy astronomy math) is intentionally still open: it's a large, separate
+piece of work, not a small fix, and forcing it into the same change as
+everything else would have made that change hard to review.
+
+**Still open:**
+
+1. **All astronomy math is placeholder.** `DummyAstroMathService` assumes
    a fixed 20:00–03:00 dark window and derives "moon phase" from the day
    of the month; `DummyAstroEventProvider` hardcodes only Perseids and
-   Geminids. This is fine for scaffolding but should not be described as
-   working astronomy anywhere in docs or demos without the "dummy" caveat.
+   Geminids. Both classes now carry KDoc saying so explicitly. This is
+   fine for scaffolding but should not be described as working astronomy
+   anywhere in docs or demos without the "dummy" caveat. See roadmap
+   item 1.
+2. **No API versioning**, and the `/api/run/astro/*` vs `/api/tasks/*`
+   naming split is unresolved — see `docs/CONVENTIONS.md`. Not urgent
+   with zero external consumers, but don't add a third naming scheme.
+3. **Two task-creation routes that are structurally one operation**
+   (`/api/tasks/dark-window`, `/api/tasks/meteor-alert`) — not
+   consolidated behind a generic `POST /api/tasks` yet. See roadmap
+   item 3.
+4. **Generic 500 for malformed non-JSON edge cases and unexpected
+   exceptions.** `StatusPages` (see "Resolved" below) now maps the
+   specific exceptions this codebase actually throws to 4xx; anything
+   outside that list still falls through to a generic
+   `INTERNAL_ERROR` 500. That's the correct default (don't leak internals
+   on unexpected errors), just noting it's a deliberately short list, not
+   exhaustive input validation.
+
+## Resolved
+
+1. **Firestore-coupled integration tests → fixed.** `Application.module()`
+   now takes an optional `taskRepositoryOverride: TaskRepository?`
+   parameter (default `null` → real Firestore, used by `main()`
+   unchanged). A test-only `Application.testModule()` extension
+   (`src/test/.../TestApplicationModule.kt`) passes
+   `InMemoryTaskRepository()` instead. All six `testApplication` route
+   tests now call `testModule()`, not `module()`, and run with zero GCP
+   dependency — verified locally: `./gradlew test` passes in this sandbox,
+   which has no GCP credentials at all.
+2. **A second, unrelated test-discoverability bug found while verifying
+   the fix above:** `TaskRunnerSchedulingTest` used JUnit 4's
+   `org.junit.Test` (pulled in transitively via `ktor-server-tests-jvm`),
+   but the project runs on JUnit Platform (`useJUnitPlatform()`) with no
+   vintage engine configured. Result: its two tests — the ones covering
+   `MANUAL` vs `DAILY` task scheduling, i.e. the core logic of the task
+   runner — were silently never discovered or run, by Gradle or CI, since
+   the test was added. Fixed by switching to `kotlin.test.Test`, matching
+   every other test file in the repo. Confirmed via
+   `find build/classes -iname '*TaskRunnerScheduling*'` (class compiled,
+   proving it was never a compile failure) and `--tests` filtering before
+   and after the fix. **Takeaway for future test files: always use
+   `kotlin.test.Test`, never `org.junit.Test` — nothing in this project
+   registers a JUnit 4 vintage engine.**
+3. **`StatusPages` installed.** `Application.module()` now maps
+   `IllegalArgumentException` (from `TaskRunner`'s `require()` validation),
+   `DateTimeException` (bad `dateIso`/`timeZoneId`), and
+   `JsonConvertException` (malformed request bodies) to `400` with a
+   consistent `{"error": {"code", "message"}}` envelope
+   (`api/model/ApiError.kt`), and everything else to a generic `500`
+   without leaking the exception message. `TaskRoute.kt`'s missing-id and
+   not-found responses were switched from plain text to the same envelope.
+4. **Dead duplicate DTO removed.** The unused local
+   `CreateDarkWindowTaskRequest` inside `TaskRoute.kt` is gone.
+   `TaskListResponse`/`TaskRunResponse`/`TaskTickResponse` were moved out
+   of that route file into `api/task/model/TaskResponses.kt`, matching
+   where `Create*TaskRequest` DTOs already lived — and the test-only
+   `TaskRunApiResponse` mirror class was deleted in favor of importing the
+   real `TaskRunResponse` directly.
+5. **`InMemoryTaskRepository` documented as intentionally prod-dead.**
+   KDoc now says explicitly: not wired into `Application.module()`,
+   exists only for `TaskRunnerSchedulingTest` and `testModule()`. Nobody
+   should "clean it up," and nobody should wonder why it's unused in prod.
+6. **`/api/tasks/tick` now checks a shared secret.** If the
+   `TASK_RUNNER_TICK_SECRET` env var is set, the endpoint requires a
+   matching `X-Tick-Secret` header and returns `401` otherwise. If the env
+   var is unset (local dev, tests, and — until you configure it — prod),
+   the check is skipped, so this is backward compatible until you opt in.
+   See `docs/SETUP.md` for configuring this on Cloud Run + Cloud
+   Scheduler.
 
 ## Roadmap (rough priority order)
 
-1. Fix test isolation from Firestore (#1 above) — unblocks everything else.
-2. Decide on and wire up a real error-handling strategy (`StatusPages`,
-   consistent JSON error body: see `docs/CONVENTIONS.md`).
-3. Replace `DummyAstroMathService` with real sunset/sunrise + astronomical
+1. Replace `DummyAstroMathService` with real sunset/sunrise + astronomical
    twilight + moon illumination calculations. *Capturing the Universe*
    (Woodhouse) and *The Beginner's Guide to Astrophotography* (Shaw) are
    good references for what actually matters to a shooter (Bortle-scale
    light pollution, moon illumination %, not just "is the sun down") —
    worth pulling from before over-engineering the math.
-4. Replace hardcoded meteor showers with a small static dataset covering
+2. Replace hardcoded meteor showers with a small static dataset covering
    the full annual calendar (still not a live API, just more complete),
    sourced from a real almanac rather than two hardcoded events.
-5. Add a shared-secret or service-account check on `/api/tasks/tick`.
-6. Consolidate the per-type task-creation routes (`/api/tasks/dark-window`,
+3. Consolidate the per-type task-creation routes (`/api/tasks/dark-window`,
    `/api/tasks/meteor-alert`) behind one generic `POST /api/tasks` that
    takes `type` in the body, now that `TaskRunner.createTask` is already
    generic. Two routes for what's structurally one operation is exactly
    the kind of shallow-wrapper duplication *A Philosophy of Software
    Design* warns about — the interface should be as generic as the
    implementation already is.
-7. Namespace the API (`/api/v1/...`) before any breaking change, and pick
+4. Namespace the API (`/api/v1/...`) before any breaking change, and pick
    one route-naming scheme — see `docs/CONVENTIONS.md` for the
    `/api/run/astro/*` vs `/api/tasks/*` inconsistency.
+5. Upgrade `/api/tasks/tick` from a shared secret to something Cloud
+   Scheduler supports natively (OIDC token + `run.invoker` IAM binding),
+   once this is actually deployed behind Cloud Scheduler rather than
+   hit manually.
 
 ## Adding a new task type (checklist)
 
@@ -131,8 +179,10 @@ to reach for something heavier.
 5. Add a route function under `api/task/` following the existing
    `darkWindowTaskRoute` / `meteorAlertTaskRoute` shape, and register it in
    `Application.module()`.
-6. Add integration tests mirroring `DarkWindowTaskRouteTest` — but see
-   Known gaps #1 first, don't propagate the Firestore-in-tests problem.
+6. Add integration tests mirroring `DarkWindowTaskRouteTest` — call
+   `testModule()`, not `module()` (see "Resolved" #1). And use
+   `kotlin.test.Test`, not `org.junit.Test` (see "Resolved" #2) — Gradle
+   will silently not run a JUnit 4-annotated test in this project.
 7. Log the change in `CHANGELOG.md` under `Unreleased`.
 
 ## Working notes

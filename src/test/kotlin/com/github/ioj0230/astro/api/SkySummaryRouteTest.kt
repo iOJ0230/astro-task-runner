@@ -1,6 +1,6 @@
 package com.github.ioj0230.astro.api
 
-import com.github.ioj0230.astro.module
+import com.github.ioj0230.astro.testModule
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -17,7 +17,7 @@ class SkySummaryRouteTest {
     fun `sky-summary endpoint returns 200 and combined fields`() =
         testApplication {
             application {
-                module()
+                testModule()
             }
 
             val response =

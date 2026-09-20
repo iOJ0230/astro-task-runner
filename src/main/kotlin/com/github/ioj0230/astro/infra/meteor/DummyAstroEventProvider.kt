@@ -10,6 +10,11 @@ import java.time.LocalTime
 import java.time.Month
 import java.time.ZoneId
 
+/**
+ * Placeholder [AstroEventService] — hardcodes exactly two showers
+ * (Perseids, Geminids) rather than a real almanac. See CLAUDE.md
+ * "Known gaps" #6 and roadmap item 4.
+ */
 class DummyAstroEventProvider : AstroEventService {
     override fun upcomingMeteorShowers(request: MeteorAlertRequest): MeteorAlertResponse {
         val zoneId = ZoneId.of(request.timeZoneId)

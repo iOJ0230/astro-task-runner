@@ -1,9 +1,10 @@
 package com.github.ioj0230.astro.api.task
 
+import com.github.ioj0230.astro.api.task.model.TaskRunResponse
 import com.github.ioj0230.astro.core.task.Task
 import com.github.ioj0230.astro.core.task.TaskStatus
 import com.github.ioj0230.astro.core.task.TaskType
-import com.github.ioj0230.astro.module
+import com.github.ioj0230.astro.testModule
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -24,7 +25,7 @@ class DarkWindowTaskRouteTest {
     fun `should create + run dark-window task and succeeds`() =
         testApplication {
             application {
-                module()
+                testModule()
             }
 
             // Create dark-window task
@@ -65,18 +66,19 @@ class DarkWindowTaskRouteTest {
             assertEquals(HttpStatusCode.OK, runResponse.status)
 
             val runResult =
-                json.decodeFromString<TaskRunApiResponse>(
+                json.decodeFromString<TaskRunResponse>(
                     runResponse.bodyAsText(),
                 )
 
             // Assertions on execution result
             assertEquals(TaskStatus.SUCCESS, runResult.task.lastStatus)
-            assertNotNull(runResult.outputJson)
+            val outputJson = runResult.outputJson
+            assertNotNull(outputJson)
 
             // Loose assertion: output should mention the domain object
             assertTrue(
-                runResult.outputJson.contains("window", ignoreCase = true) ||
-                    runResult.outputJson.contains("dark", ignoreCase = true),
+                outputJson.contains("window", ignoreCase = true) ||
+                    outputJson.contains("dark", ignoreCase = true),
                 "outputJson should contain dark window information",
             )
         }
@@ -85,7 +87,7 @@ class DarkWindowTaskRouteTest {
     fun `should run disabled dark-window task and fails`() =
         testApplication {
             application {
-                module()
+                testModule()
             }
 
             // Create disabled dark-window task
@@ -122,7 +124,7 @@ class DarkWindowTaskRouteTest {
             assertEquals(HttpStatusCode.OK, runResponse.status)
 
             val runResult =
-                json.decodeFromString<TaskRunApiResponse>(
+                json.decodeFromString<TaskRunResponse>(
                     runResponse.bodyAsText(),
                 )
 

@@ -8,20 +8,73 @@ don't wait until a "release" to write it down.
 
 ## Unreleased
 
-Added by this session: `CLAUDE.md`, `docs/ARCHITECTURE.md`,
-`docs/CONVENTIONS.md`, this `CHANGELOG.md`. No application code changed.
+### Fixed
+- **Integration tests no longer touch real Firestore.**
+  `Application.module()` now takes an optional `taskRepositoryOverride:
+  TaskRepository?` (default `null` → real Firestore, unchanged for
+  `main()`). A new `Application.testModule()` test helper
+  (`src/test/.../TestApplicationModule.kt`) injects
+  `InMemoryTaskRepository` instead. All six `testApplication`-based route
+  tests were switched from `module()` to `testModule()`. Root cause this
+  fixes: CI's `ci.yml` has no GCP auth step, so these tests were only ever
+  reliable by accident of whatever credentials happened to be ambient in
+  the environment running them.
+- **`TaskRunnerSchedulingTest`'s two tests were silently never running.**
+  Found while verifying the fix above. The test used JUnit 4's
+  `org.junit.Test` (available transitively via `ktor-server-tests-jvm`),
+  but the project runs on JUnit Platform with no vintage engine
+  registered — so both tests (covering `MANUAL` vs `DAILY` task
+  scheduling) compiled successfully but were never discovered or executed
+  by `./gradlew test`, in this session or, as far as the change history
+  shows, ever. Fixed by switching to `kotlin.test.Test`, matching every
+  other test file in the repo.
+- **Structured JSON errors via `StatusPages`.** `Application.module()`
+  installs `StatusPages` and maps `IllegalArgumentException` (task
+  validation), `DateTimeException` (bad date/timezone input), and
+  `JsonConvertException` (malformed request bodies) to `400` with a
+  consistent `{"error": {"code", "message"}}` envelope
+  (`api/model/ApiError.kt`); everything else falls through to a generic,
+  non-leaky `500`. `TaskRoute.kt`'s missing-id/not-found responses were
+  switched from plain text to the same envelope.
+- **`POST /api/tasks/tick` now checks a shared secret** when
+  `TASK_RUNNER_TICK_SECRET` is set (via the `X-Tick-Secret` header),
+  401ing on a mismatch. No env var set → unchanged, unauthenticated
+  behavior (local dev, tests).
 
-### Known issues (tracked, not yet fixed — see `CLAUDE.md` → Known gaps)
-- Route-level integration tests (`TaskRouteTest`, `DarkWindowTaskRouteTest`,
-  `MeteorAlertTaskRouteTest`) exercise `Application.module()` directly,
-  which wires a real `FirestoreTaskRepository`. CI has no GCP credentials
-  configured, so these tests are not reliably reproducible.
-- `ktor-server-status-pages-jvm` is declared as a dependency but never
-  installed; error responses are inconsistent (mix of plain text and
-  unhandled-exception 500s).
-- `TaskRoute.kt` declares a local, unused `CreateDarkWindowTaskRequest`
-  that shadows the real one in `api/task/model/`.
-- `POST /api/tasks/tick` has no authentication.
+### Changed
+- Restored the executable bit on `gradlew` (it was checked in as a plain
+  `644` file, so a fresh non-CI checkout needed a manual `chmod +x
+  gradlew` before `./gradlew` would run at all; `ci.yml`/`cd.yml` paper
+  over this with an explicit `chmod` step, which is why it went unnoticed).
+- Removed the dead, unused local `CreateDarkWindowTaskRequest` from
+  `TaskRoute.kt` (it shadowed the real one in `api/task/model/` and was
+  never referenced).
+- Moved `TaskListResponse`, `TaskRunResponse`, `TaskTickResponse` out of
+  `TaskRoute.kt` into `api/task/model/TaskResponses.kt`, alongside the
+  `Create*TaskRequest` DTOs they pair with.
+- Deleted the test-only `TaskRunApiResponse` mirror class; tests now
+  decode the real `api/task/model/TaskRunResponse` directly.
+- Added KDoc to `InMemoryTaskRepository`, `DummyAstroMathService`, and
+  `DummyAstroEventProvider` stating explicitly what each is for (and, for
+  the two `Dummy*` classes, that they are not real astronomy).
+
+### Added
+- `docs/SETUP.md`: reconstructed GCP project / Firestore / CD-secrets
+  setup guide (see that file's own note on provenance — it's derived from
+  what the code and CI/CD workflows require, not a transcript of the
+  original setup).
+
+### Verified
+- `./gradlew ktlintCheck test` and `./gradlew clean build shadowJar` both
+  pass locally in a sandbox with **no GCP credentials at all** — the
+  Firestore test-isolation fix is confirmed working, not just plausible.
+
+## 2026-09-20 — Project documentation
+
+Added `CLAUDE.md`, `docs/ARCHITECTURE.md`, `docs/CONVENTIONS.md`, and this
+`CHANGELOG.md`. No application code changed in this entry — see
+`Unreleased` above for the follow-up fixes these docs' "Known gaps"
+section prompted.
 
 ## 2026-01-05 — Firestore persistence
 

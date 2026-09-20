@@ -1,9 +1,10 @@
 package com.github.ioj0230.astro.api.task
 
+import com.github.ioj0230.astro.api.task.model.TaskRunResponse
 import com.github.ioj0230.astro.core.task.Task
 import com.github.ioj0230.astro.core.task.TaskStatus
 import com.github.ioj0230.astro.core.task.TaskType
-import com.github.ioj0230.astro.module
+import com.github.ioj0230.astro.testModule
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -24,7 +25,7 @@ class MeteorAlertTaskRouteTest {
     fun `should create + run meteor-alert task and succeeds`() =
         testApplication {
             application {
-                module()
+                testModule()
             }
 
             // Create meteor-alert task
@@ -67,18 +68,19 @@ class MeteorAlertTaskRouteTest {
             val runBody = runResponse.bodyAsText()
 
             val runResult =
-                json.decodeFromString<TaskRunApiResponse>(
+                json.decodeFromString<TaskRunResponse>(
                     runBody,
                 )
 
             // Assertions on execution result
             assertEquals(TaskStatus.SUCCESS, runResult.task.lastStatus)
-            assertNotNull(runResult.outputJson)
+            val outputJson = runResult.outputJson
+            assertNotNull(outputJson)
 
             // Loose assertion: output should mention the domain object
             assertTrue(
-                runResult.outputJson.contains("meteor", ignoreCase = true) ||
-                    runResult.outputJson.contains("shower", ignoreCase = true),
+                outputJson.contains("meteor", ignoreCase = true) ||
+                    outputJson.contains("shower", ignoreCase = true),
                 "outputJson should contain meteor alert information",
             )
         }
@@ -87,7 +89,7 @@ class MeteorAlertTaskRouteTest {
     fun `should run disabled meteor-alert task and fails`() =
         testApplication {
             application {
-                module()
+                testModule()
             }
 
             val json = Json { ignoreUnknownKeys = true }
@@ -120,7 +122,7 @@ class MeteorAlertTaskRouteTest {
                 client.post("/api/tasks/${createdTask.id}/run")
 
             val runResult =
-                json.decodeFromString<TaskRunApiResponse>(
+                json.decodeFromString<TaskRunResponse>(
                     runResponse.bodyAsText(),
                 )
 

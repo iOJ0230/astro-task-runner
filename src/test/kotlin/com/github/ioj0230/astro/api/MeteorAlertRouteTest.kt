@@ -1,6 +1,6 @@
 package com.github.ioj0230.astro.api
 
-import com.github.ioj0230.astro.module
+import com.github.ioj0230.astro.testModule
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -17,7 +17,7 @@ class MeteorAlertRouteTest {
     fun `should return 200 and meteor fields`() =
         testApplication {
             application {
-                module() // use the real Ktor wiring
+                testModule()
             }
 
             val response =

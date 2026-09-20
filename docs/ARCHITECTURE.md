@@ -38,10 +38,10 @@ com.github.ioj0230.astro
 interfaces (`AstroMathService`, `AstroEventService`, `TaskRepository`);
 `infra` implements them; `api` only ever talks to `core` types. This is
 what lets `TaskRunnerSchedulingTest` swap in `InMemoryTaskRepository` and
-stub services without touching Ktor at all. The one place this boundary is
-currently *not* respected for tests is route-level integration tests,
-which go through `Application.module()` and therefore always get the real
-`FirestoreTaskRepository` — see `CLAUDE.md` → Known gaps #1.
+stub services without touching Ktor at all. Route-level integration tests
+respect the same boundary via `Application.testModule()` — `module()` with
+`InMemoryTaskRepository` injected instead of Firestore — rather than
+calling `module()` directly. See `CLAUDE.md` → "Resolved" #1.
 
 ```mermaid
 flowchart LR
@@ -166,7 +166,10 @@ sequenceDiagram
 `POST /api/tasks/tick` is the same `runTask` path, just invoked for every
 task where `isDue(task, now)` is true (see the state diagram below). It's
 the endpoint an external scheduler (Cloud Scheduler, cron) is meant to
-hit periodically — currently unauthenticated (`CLAUDE.md` → Known gaps #5).
+hit periodically. It checks a shared secret (`X-Tick-Secret` header against
+the `TASK_RUNNER_TICK_SECRET` env var) when that env var is set — see
+`CLAUDE.md` → "Resolved" #6 and `docs/SETUP.md` for wiring it up with Cloud
+Scheduler.
 
 ## Task lifecycle
 
@@ -277,9 +280,11 @@ flowchart LR
   shadow/fat jar (`./gradlew clean shadowJar`), `eclipse-temurin:21-jre`
   runs it. No dev dependencies ship in the runtime image.
 - **CI** (`ci.yml`): on every push/PR to `main`, runs `ktlintCheck` then
-  `test`. No GCP credentials are configured here — which is exactly why
-  the Firestore-backed integration tests are fragile in this workflow
-  (`CLAUDE.md` → Known gaps #1).
+  `test`. No GCP credentials are configured here — that's fine now that
+  tests run against `testModule()` / `InMemoryTaskRepository` instead of
+  real Firestore (`CLAUDE.md` → "Resolved" #1). If a new test needs real
+  Firestore behavior, it needs its own emulator setup in `ci.yml`, not a
+  call to `module()`.
 - **CD** (`cd.yml`): on push to `main`, lints + tests again, authenticates
   to GCP via a service account (`GCP_SA_KEY` secret), builds with Cloud
   Build, and deploys to Cloud Run with `--allow-unauthenticated`. There's

@@ -39,6 +39,11 @@ Health check:
 curl http://localhost:8080/health
 ```
 
+> `./gradlew run` connects to real Firestore on startup, so it needs GCP
+> credentials locally (`gcloud auth application-default login`). See
+> [`docs/SETUP.md`](docs/SETUP.md) if that's not already configured —
+> `./gradlew test` doesn't need this.
+
 ---
 
 ## Basic Usage (via curl or Postman)
@@ -66,6 +71,10 @@ POST /api/tasks/tick          # run all due tasks (for scheduling)
 GET  /api/tasks               # list tasks
 ```
 
+`tick` checks an `X-Tick-Secret` header against the `TASK_RUNNER_TICK_SECRET`
+env var when that var is set (unset = open, same as before). See
+[`docs/SETUP.md`](docs/SETUP.md#8-securing-post-apitaskstick).
+
 ---
 
 ## Architecture (short overview)
@@ -74,7 +83,7 @@ GET  /api/tasks               # list tasks
 com.github.ioj0230.astro
 ├── api     # HTTP routes
 ├── core    # domain models + services (dark window, meteor, sky, tasks)
-├── infra   # implementations (dummy math, dummy meteor data, in-memory tasks)
+├── infra   # implementations (dummy math, dummy meteor data, Firestore-backed tasks)
 └── Application.kt  # Ktor setup + ServiceRegistry
 ```
 
@@ -93,6 +102,8 @@ The project is structured to support clean architecture:
   task lifecycle, and deployment diagrams
 - [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md) — naming, error-handling,
   and API-design conventions
+- [`docs/SETUP.md`](docs/SETUP.md) — GCP project, Firestore, and CI/CD
+  secrets setup (start here if you're setting this up on a new machine)
 - [`CHANGELOG.md`](CHANGELOG.md) — history of what's shipped
 
 ---

@@ -9,10 +9,10 @@ import com.github.ioj0230.astro.core.meteor.MeteorAlertResponse
 import com.github.ioj0230.astro.core.sky.SkySummaryService
 import com.github.ioj0230.astro.infra.task.InMemoryTaskRepository
 import kotlinx.serialization.json.Json
-import org.junit.Test
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
