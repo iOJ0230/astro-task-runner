@@ -85,6 +85,18 @@ The project is structured to support clean architecture:
 
 ---
 
+## Documentation
+
+- [`CLAUDE.md`](CLAUDE.md) — orientation for continuing this project (quick
+  start, known gaps, roadmap)
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — layers, request flow,
+  task lifecycle, and deployment diagrams
+- [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md) — naming, error-handling,
+  and API-design conventions
+- [`CHANGELOG.md`](CHANGELOG.md) — history of what's shipped
+
+---
+
 ## Status
 
 This project currently uses dummy astronomy logic and hardcoded meteor data
