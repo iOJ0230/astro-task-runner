@@ -1,8 +1,9 @@
 package com.github.ioj0230.astro.api
 
+import com.github.ioj0230.astro.api.task.model.TaskRunResponse
 import com.github.ioj0230.astro.core.task.Task
 import com.github.ioj0230.astro.core.task.TaskType
-import com.github.ioj0230.astro.module
+import com.github.ioj0230.astro.testModule
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -10,7 +11,6 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.testing.testApplication
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -19,17 +19,11 @@ import kotlin.test.assertNotNull
 class TaskRouteTest {
     private val json = Json { ignoreUnknownKeys = true }
 
-    @Serializable
-    data class TaskRunResponse(
-        val task: Task,
-        val outputJson: String? = null,
-    )
-
     @Test
     fun `should create dark-window task and return Task with id`() =
         testApplication {
             application {
-                module()
+                testModule()
             }
 
             val response =
@@ -65,7 +59,7 @@ class TaskRouteTest {
     fun `should run dark-window task executes and return outputJson`() =
         testApplication {
             application {
-                module()
+                testModule()
             }
 
             // 1. create a task
