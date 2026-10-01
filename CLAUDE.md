@@ -106,6 +106,11 @@ everything else would have made that change hard to review.
    creation date. `ASTRO_CALENDAR` avoids this with a null `startDateIso`
    ("today when it runs"). Apply the same fix to the other two before
    relying on them for daily notifications.
+6. **`FirestoreTaskRunRepository`'s query isn't exercised by tests.**
+   The field mapping is unit-tested (`TaskRunDocumentsTest`), and the
+   behavior is tested through `InMemoryTaskRunRepository`, but the
+   `orderBy`/`limit` query only runs against real Firestore. A Firestore
+   emulator in CI would close this.
 
 ## Resolved
 
@@ -165,6 +170,11 @@ everything else would have made that change hard to review.
    skipped. `TaskRunner.runTask` now has a single success/failure path for
    all task types: failures are stored as `FAILED` and never escape.
    Covered by `TaskRunnerFailureTest`.
+8. **Run history.** `Task` only ever held the latest status/error, each
+   run overwriting the last, and notification results weren't stored at
+   all. Every run is now a `TaskRun` document under
+   `tasks/{id}/runs`, readable via `GET /api/tasks/{id}/runs`. See
+   `docs/SETUP.md` § 10 for the 90-day TTL policy.
 
 ## Roadmap (rough priority order)
 

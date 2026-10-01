@@ -16,6 +16,7 @@ import com.github.ioj0230.astro.core.sky.SkySummaryService
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
+import org.slf4j.LoggerFactory
 import java.time.Clock
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -26,10 +27,13 @@ data class TaskRunResult(
     val outputJson: String? = null,
     // One entry per channel; empty when the task's NotifyPolicy said not to send
     val deliveries: List<NotificationDelivery> = emptyList(),
+    // Id of the stored TaskRun; null only if recording the history failed
+    val runId: String? = null,
 )
 
 class TaskRunner(
     private val taskRepository: TaskRepository,
+    private val taskRunRepository: TaskRunRepository,
     private val astroMathService: AstroMathService,
     private val astroEventService: AstroEventService,
     private val skySummaryService: SkySummaryService,
@@ -38,6 +42,8 @@ class TaskRunner(
     private val notificationService: NotificationService = NotificationService(emptyList()),
     private val clock: Clock = Clock.systemUTC(),
 ) {
+    private val log = LoggerFactory.getLogger(TaskRunner::class.java)
+
     private fun nowUtc(): OffsetDateTime = OffsetDateTime.now(clock)
 
     /**
@@ -103,19 +109,64 @@ class TaskRunner(
         )
     }
 
-    suspend fun runTask(taskId: String): TaskRunResult? {
+    suspend fun runTask(
+        taskId: String,
+        trigger: TaskRunTrigger = TaskRunTrigger.MANUAL,
+    ): TaskRunResult? {
         val existing = taskRepository.findById(taskId) ?: return null
-        if (!existing.enabled) {
-            val updated =
-                existing.copy(
-                    lastStatus = TaskStatus.FAILED,
-                    lastError = "Task disabled",
-                )
-            return TaskRunResult(taskRepository.update(updated), outputJson = null)
+        val startedAt = nowUtc()
+
+        val result =
+            if (existing.enabled) {
+                executeAndStore(existing, startedAt.toString())
+            } else {
+                val updated =
+                    existing.copy(
+                        lastStatus = TaskStatus.FAILED,
+                        lastError = "Task disabled",
+                    )
+                TaskRunResult(taskRepository.update(updated), outputJson = null)
+            }
+
+        return result.copy(runId = recordRun(result, trigger, startedAt))
+    }
+
+    /**
+     * Appends this run to the history. Never fails the run: if Firestore
+     * rejects the write, the task's own status is already stored, so log
+     * and carry on rather than turning a successful run into an error.
+     */
+    private fun recordRun(
+        result: TaskRunResult,
+        trigger: TaskRunTrigger,
+        startedAt: OffsetDateTime,
+    ): String? {
+        val run =
+            TaskRun(
+                id = UUID.randomUUID().toString(),
+                taskId = result.task.id,
+                taskName = result.task.name,
+                taskType = result.task.type,
+                trigger = trigger,
+                startedAtIso = startedAt.toString(),
+                finishedAtIso = nowUtc().toString(),
+                status = result.task.lastStatus,
+                error = result.task.lastError,
+                outputJson = result.outputJson,
+                deliveries = result.deliveries,
+            )
+        return try {
+            taskRunRepository.record(run).id
+        } catch (e: Exception) {
+            log.error("Could not record run history for task ${run.taskId}", e)
+            null
         }
+    }
 
-        val nowIso = nowUtc().toString()
-
+    private suspend fun executeAndStore(
+        existing: Task,
+        nowIso: String,
+    ): TaskRunResult {
         // One success/failure path for every task type: a throwing task is
         // recorded as FAILED on that task instead of escaping — which would
         // otherwise abort `tick` for every task after it.
@@ -168,7 +219,7 @@ class TaskRunner(
             }
 
         return due.map { task ->
-            runTask(task.id) ?: TaskRunResult(
+            runTask(task.id, TaskRunTrigger.TICK) ?: TaskRunResult(
                 task =
                     task.copy(
                         lastStatus = TaskStatus.FAILED,

@@ -2,6 +2,7 @@ package com.github.ioj0230.astro
 
 import com.github.ioj0230.astro.core.notify.Notifier
 import com.github.ioj0230.astro.infra.task.InMemoryTaskRepository
+import com.github.ioj0230.astro.infra.task.InMemoryTaskRunRepository
 import io.ktor.server.application.Application
 
 /**
@@ -16,4 +17,8 @@ import io.ktor.server.application.Application
  * never receive test traffic; pass fakes to assert on deliveries.
  */
 fun Application.testModule(notifiers: List<Notifier> = emptyList()) =
-    module(taskRepositoryOverride = InMemoryTaskRepository(), notifiersOverride = notifiers)
+    module(
+        taskRepositoryOverride = InMemoryTaskRepository(),
+        taskRunRepositoryOverride = InMemoryTaskRunRepository(),
+        notifiersOverride = notifiers,
+    )

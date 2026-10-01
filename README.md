@@ -76,6 +76,7 @@ POST /api/tasks/astro-calendar  # create task
 POST /api/tasks/{id}/run      # run task manually
 POST /api/tasks/tick          # run all due tasks (for scheduling)
 GET  /api/tasks               # list tasks
+GET  /api/tasks/{id}/runs     # run history: status, error, output, notification results
 ```
 
 🔔 Notifications
