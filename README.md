@@ -120,6 +120,10 @@ The project is structured to support clean architecture:
   and API-design conventions
 - [`docs/SETUP.md`](docs/SETUP.md) — GCP project, Firestore, and CI/CD
   secrets setup (start here if you're setting this up on a new machine)
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — where this is going: verified
+  data sources, handling source failures, phases, and cost
+- [`docs/RUNBOOKS.md`](docs/RUNBOOKS.md) — step-by-step fixes when the
+  deployed service misbehaves
 - [`CHANGELOG.md`](CHANGELOG.md) — history of what's shipped
 
 ---
@@ -127,7 +131,9 @@ The project is structured to support clean architecture:
 ## Status
 
 This project currently uses dummy astronomy logic, hardcoded meteor data
-(Perseids & Geminids), and a one-month dummy sky calendar. Real astronomy APIs may be integrated next.
+(Perseids & Geminids), and a one-month dummy sky calendar. Notifications
+and run history work for real. Moving to verified sources (USNO, IMO,
+local ephemeris) is planned in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 
 Pull requests and suggestions are welcome!

@@ -59,7 +59,11 @@ gcloud config set project YOUR_PROJECT_ID
 ```
 
 Billing must be enabled on the project (Cloud Run and Cloud Build both
-require it).
+require it). **As of 2026-09-20 it isn't:** CD fails at "Build image with
+Cloud Build" with "The billing account for the owning project is disabled
+in state closed". Re-link an active billing account (Console → Billing →
+Account management → link the project) and add a small budget alert. See
+`docs/ROADMAP.md` → "Do we need to pay?" for expected cost.
 
 ## 2. Enable the required APIs
 
@@ -351,6 +355,7 @@ Cloud Run → astro-task-runner → Logs, or Logs Explorer with
 | `cd.yml` fails at "Build image with Cloud Build" | Deploy SA missing `cloudbuild.builds.editor` or `storage.admin` |
 | `cd.yml` fails at "Deploy to Cloud Run" | Deploy SA missing `run.admin` or `iam.serviceAccountUser` |
 | Firestore calls fail with a "project not found"-style error despite `gcloud auth application-default login` | Set `GOOGLE_CLOUD_PROJECT` explicitly — step 6 |
+| `cd.yml` fails at "Build image with Cloud Build" with "billing account ... disabled in state closed" | Billing account closed or unlinked — step 1 |
 | Startup fails with "Notification channel '...' is partially configured" | Some, not all, of that channel's variables are set — § 9 |
 | `POST /api/notifications` returns `409 NO_NOTIFICATION_CHANNELS` | No channel variables set on this service — § 9 |
 | A delivery shows `"success": false` with `telegram responded 400: ... chat not found` | Wrong `TELEGRAM_CHAT_ID`, or you never messaged the bot first — § 9 |

@@ -12,7 +12,10 @@ Run, backed by Firestore. It answers three astrophotography questions
 (when's it dark, are any meteor showers coming, give me tonight's summary,
 what's on the sky calendar) and wraps them in a minimal task-scheduling layer so the same computations
 can run on a timer instead of only on-demand. A task can push its result,
-or only its failures, to Discord, Telegram, and email. The astronomy logic is
+or only its failures, to Discord, Telegram, and email. **Where it's
+heading:** an AstroCalendar-style sky digest built from verified sources
+and delivered on a schedule. `docs/ROADMAP.md` is the plan of record, and
+`docs/RUNBOOKS.md` is what to do when the deployed thing breaks. The astronomy logic is
 currently **all dummy/hardcoded** — see "Known gaps" below. This is a
 portfolio piece as much as a working app, so code quality and docs matter
 as much as features.
@@ -111,6 +114,9 @@ everything else would have made that change hard to review.
    behavior is tested through `InMemoryTaskRunRepository`, but the
    `orderBy`/`limit` query only runs against real Firestore. A Firestore
    emulator in CI would close this.
+7. **GCP billing account is closed.** CD has failed since 2026-09-20 at
+   the Cloud Build step for this reason, so `main` is not deployed. This
+   is an ops fix, not a code fix: `docs/RUNBOOKS.md` runbook 1.
 
 ## Resolved
 
@@ -178,6 +184,13 @@ everything else would have made that change hard to review.
 
 ## Roadmap (rough priority order)
 
+`docs/ROADMAP.md` is the detailed plan: notifications, run history and
+calendar (phase 1), deploy (1b), USNO moon phases (2), IMO meteor
+dataset (3), local ephemeris for planets and deep sky (4), real dark
+window (5). It also covers the data sources, how to handle a failing
+source, and the rules for adding one. The original list below still
+holds; phases 2–5 refine items 1–2.
+
 1. Replace `DummyAstroMathService` with real sunset/sunrise + astronomical
    twilight + moon illumination calculations. *Capturing the Universe*
    (Woodhouse) and *The Beginner's Guide to Astrophotography* (Shaw) are
@@ -231,6 +244,8 @@ everything else would have made that change hard to review.
   `docs`. Lowercase, imperative mood, no period.
 - `ktlintCheck` is enforced in CI (`ci.yml`) and blocks the build — run it
   locally before pushing, not after CI fails.
+- When something breaks in production, check `docs/RUNBOOKS.md` first,
+  and add a runbook when you learn a new failure mode.
 - When something breaks, record the root cause in `CHANGELOG.md`
   (`Fixed`), not just "fixed bug." A one-line root cause now saves a
   repeat investigation later — same reasoning as a blameless postmortem,
