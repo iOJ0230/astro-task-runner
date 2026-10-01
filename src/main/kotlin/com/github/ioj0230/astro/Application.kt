@@ -1,28 +1,41 @@
 package com.github.ioj0230.astro
 
+import com.github.ioj0230.astro.api.astroCalendarRoute
 import com.github.ioj0230.astro.api.darkWindowRoute
 import com.github.ioj0230.astro.api.meteorAlertRoute
 import com.github.ioj0230.astro.api.model.ApiError
 import com.github.ioj0230.astro.api.model.ApiErrorBody
+import com.github.ioj0230.astro.api.notify.notificationRoute
 import com.github.ioj0230.astro.api.skySummaryRoute
+import com.github.ioj0230.astro.api.task.astroCalendarTaskRoute
 import com.github.ioj0230.astro.api.task.darkWindowTaskRoute
 import com.github.ioj0230.astro.api.task.meteorAlertTaskRoute
 import com.github.ioj0230.astro.api.taskRoute
+import com.github.ioj0230.astro.core.calendar.AstroCalendarService
 import com.github.ioj0230.astro.core.math.AstroMathService
 import com.github.ioj0230.astro.core.meteor.AstroEventService
+import com.github.ioj0230.astro.core.notify.NotificationService
+import com.github.ioj0230.astro.core.notify.Notifier
 import com.github.ioj0230.astro.core.sky.SkySummaryService
 import com.github.ioj0230.astro.core.task.TaskRepository
 import com.github.ioj0230.astro.core.task.TaskRunner
+import com.github.ioj0230.astro.infra.calendar.DummyAstroCalendarProvider
 import com.github.ioj0230.astro.infra.math.DummyAstroMathService
 import com.github.ioj0230.astro.infra.meteor.DummyAstroEventProvider
+import com.github.ioj0230.astro.infra.notify.NotifierFactory
 import com.github.ioj0230.astro.infra.task.FirestoreTaskRepository
 import com.google.cloud.firestore.FirestoreOptions
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.JsonConvertException
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationStopped
 import io.ktor.server.application.call
 import io.ktor.server.application.install
+import io.ktor.server.application.log
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.callloging.CallLogging
@@ -44,6 +57,8 @@ data class ServiceRegistry(
     val astroMathService: AstroMathService,
     val astroEventService: AstroEventService,
     val skySummaryService: SkySummaryService,
+    val astroCalendarService: AstroCalendarService,
+    val notificationService: NotificationService,
     val taskRepository: TaskRepository,
     val taskRunner: TaskRunner,
     val json: Json,
@@ -55,8 +70,15 @@ data class ServiceRegistry(
  * (`main()`) always leaves this null and gets a Firestore-backed
  * repository. See `testModule()` (test sourceSet) and CLAUDE.md
  * "Resolved" #1.
+ * @param notifiersOverride Same idea for notifications: tests pass an
+ * explicit list (usually empty or fakes) so a developer's own
+ * DISCORD_WEBHOOK_URL etc. never gets messaged by a test run. Null →
+ * channels come from environment variables via [NotifierFactory].
  */
-fun Application.module(taskRepositoryOverride: TaskRepository? = null) {
+fun Application.module(
+    taskRepositoryOverride: TaskRepository? = null,
+    notifiersOverride: List<Notifier>? = null,
+) {
     val json =
         Json {
             ignoreUnknownKeys = true
@@ -66,6 +88,19 @@ fun Application.module(taskRepositoryOverride: TaskRepository? = null) {
     val astroMathService: AstroMathService = DummyAstroMathService()
     val astroEventService: AstroEventService = DummyAstroEventProvider()
     val skySummaryService = SkySummaryService(astroMathService, astroEventService)
+    val astroCalendarService = AstroCalendarService(listOf(DummyAstroCalendarProvider()))
+
+    val notifiers =
+        notifiersOverride ?: run {
+            val httpClient =
+                HttpClient(CIO) {
+                    install(HttpTimeout) { requestTimeoutMillis = 10_000 }
+                }
+            environment.monitor.subscribe(ApplicationStopped) { httpClient.close() }
+            NotifierFactory.fromEnvironment(System.getenv(), httpClient)
+        }
+    val notificationService = NotificationService(notifiers)
+    log.info("Notification channels enabled: ${notificationService.channels.ifEmpty { listOf("none") }}")
 
     val taskRepository =
         taskRepositoryOverride ?: run {
@@ -74,11 +109,13 @@ fun Application.module(taskRepositoryOverride: TaskRepository? = null) {
         }
     val taskRunner =
         TaskRunner(
-            taskRepository,
-            astroMathService,
-            astroEventService,
-            skySummaryService,
-            json,
+            taskRepository = taskRepository,
+            astroMathService = astroMathService,
+            astroEventService = astroEventService,
+            skySummaryService = skySummaryService,
+            astroCalendarService = astroCalendarService,
+            json = json,
+            notificationService = notificationService,
         )
 
     val services =
@@ -86,9 +123,11 @@ fun Application.module(taskRepositoryOverride: TaskRepository? = null) {
             astroMathService = astroMathService,
             astroEventService = astroEventService,
             skySummaryService = skySummaryService,
+            astroCalendarService = astroCalendarService,
+            notificationService = notificationService,
             taskRepository = taskRepository,
             taskRunner = taskRunner,
-            json,
+            json = json,
         )
 
     install(CallLogging)
@@ -144,9 +183,16 @@ fun Application.module(taskRepositoryOverride: TaskRepository? = null) {
         meteorAlertRoute(services)
         skySummaryRoute(services)
 
+        // read APIs
+        astroCalendarRoute(services)
+
+        // notification APIs
+        notificationRoute(services)
+
         // task APIs
         taskRoute(services)
         darkWindowTaskRoute(services)
         meteorAlertTaskRoute(services)
+        astroCalendarTaskRoute(services)
     }
 }

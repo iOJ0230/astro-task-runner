@@ -8,7 +8,47 @@ don't wait until a "release" to write it down.
 
 ## Unreleased
 
+### Added
+- **Notifications to Discord, Telegram, and email.** New `core/notify`
+  (`Notifier`, `NotificationService`) with `infra/notify` implementations:
+  Discord webhook, Telegram Bot API, and SMTP via Angus Mail. Channels
+  are enabled by env vars. A partially configured channel fails startup
+  instead of being skipped silently. Channels are isolated: one failing
+  channel doesn't affect the others or the task.
+- **`notify` flag on tasks** (default `false`, so existing Firestore
+  documents are unchanged). A run of a `notify: true` task sends its
+  result, or its failure, to every channel. Run and tick responses
+  include a per-channel `deliveries` list, and failed deliveries are
+  logged as warnings.
+- **`POST /api/notifications`** sends a test message to all channels.
+  It is gated by the same `X-Tick-Secret` check as `tick`, and returns
+  `409` when no channel is configured.
+- **Sky calendar.** New `core/calendar` (`AstroCalendarEvent` with
+  category and `source`, the `AstroCalendarProvider` interface, and
+  `AstroCalendarService`, which merges providers). Adds
+  `GET /api/calendar/events`, the `ASTRO_CALENDAR` task type, and
+  `POST /api/tasks/astro-calendar`. The only provider so far is
+  `DummyAstroCalendarProvider`: October 2026 copied from UP AstroSoc's
+  AstroCalendar poster, explicitly marked unverified.
+- `docs/ROADMAP.md`: the plan of record for moving to verified sources
+  (USNO, IMO, local ephemeris), plus the billing and cost answer.
+- `docs/SETUP.md` § 9: channel setup for Discord, Telegram, and Gmail,
+  using Secret Manager on Cloud Run.
+- `docs/SETUP.md`: reconstructed GCP project / Firestore / CD-secrets
+  setup guide (see that file's own note on provenance — it's derived from
+  what the code and CI/CD workflows require, not a transcript of the
+  original setup).
+
 ### Fixed
+- **One failing task aborted the rest of `tick`.** Root cause: the
+  dark-window run path had no try/catch, unlike meteor-alert, so any
+  exception (e.g. an unparseable `dateIso`) escaped `runAllEnabled()`
+  and skipped every later due task. Now every task type shares one
+  success/failure path in `TaskRunner.runTask`. Regression test:
+  `TaskRunnerFailureTest`.
+- **Documented why CD has been red since 2026-09-20.** The GCP billing
+  account is closed (Cloud Build: "disabled in state closed"). This is an
+  ops fix, recorded in `CLAUDE.md` and `docs/SETUP.md`. No code change.
 - **Integration tests no longer touch real Firestore.**
   `Application.module()` now takes an optional `taskRepositoryOverride:
   TaskRepository?` (default `null` → real Firestore, unchanged for
@@ -42,6 +82,12 @@ don't wait until a "release" to write it down.
   behavior (local dev, tests).
 
 ### Changed
+- `TaskRunner.runTask`/`runAllEnabled` are now `suspend`, because
+  notification sending is async.
+- The tick shared-secret check moved from `TaskRoute.kt` to
+  `api/SharedSecret.kt` so `POST /api/notifications` can reuse it.
+- `Application.module()` takes `notifiersOverride`, and `testModule()`
+  passes an empty list by default, so tests never message real channels.
 - Restored the executable bit on `gradlew` (it was checked in as a plain
   `644` file, so a fresh non-CI checkout needed a manual `chmod +x
   gradlew` before `./gradlew` would run at all; `ci.yml`/`cd.yml` paper
@@ -58,16 +104,15 @@ don't wait until a "release" to write it down.
   `DummyAstroEventProvider` stating explicitly what each is for (and, for
   the two `Dummy*` classes, that they are not real astronomy).
 
-### Added
-- `docs/SETUP.md`: reconstructed GCP project / Firestore / CD-secrets
-  setup guide (see that file's own note on provenance — it's derived from
-  what the code and CI/CD workflows require, not a transcript of the
-  original setup).
-
 ### Verified
 - `./gradlew ktlintCheck test` and `./gradlew clean build shadowJar` both
   pass locally in a sandbox with **no GCP credentials at all** — the
   Firestore test-isolation fix is confirmed working, not just plausible.
+- Notifications and calendar: `./gradlew ktlintCheck test` passes, with 34
+  tests across 15 classes (previously 11), and the shadow jar includes the
+  Angus Mail SMTP provider. Not yet verified against live Discord,
+  Telegram, or Gmail, since the sandbox has no credentials. Use
+  `POST /api/notifications` once secrets are set.
 
 ## 2026-09-20 — Project documentation
 

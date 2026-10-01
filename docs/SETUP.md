@@ -43,7 +43,11 @@ gcloud config set project YOUR_PROJECT_ID
 ```
 
 Billing must be enabled on the project (Cloud Run and Cloud Build both
-require it).
+require it). **As of 2026-09-20 it isn't:** CD fails at "Build image with
+Cloud Build" with "The billing account for the owning project is disabled
+in state closed". Re-link an active billing account (Console → Billing →
+Account management → link the project) and add a small budget alert. See
+`docs/ROADMAP.md` → "Do we need to pay?" for expected cost.
 
 ## 2. Enable the required APIs
 
@@ -190,6 +194,90 @@ Until you do this, `tick` stays unauthenticated (matches today's
 behavior) — set the env var whenever you're ready to lock it down, no
 code change needed.
 
+The same secret also guards `POST /api/notifications` (§ 9), which sends
+messages to your channels. Set it before configuring any channel on a
+publicly reachable service, or anyone with the URL can spam you.
+
+`DAILY` tasks run on the first tick at or after `preferredHourUtc`, so an
+hourly schedule is enough. For 08:00 in Manila (UTC+8), use
+`preferredHourUtc: 0`.
+
+## 9. Notification channels (Discord, Telegram, email)
+
+Each channel is turned on by setting its environment variables. If none
+are set, the channel is skipped. If only some are set, **startup fails**
+with a message naming the missing variable. That's deliberate: a typo
+should break the deploy, not quietly stop your alerts. The startup log
+line `Notification channels enabled: [...]` shows which channels are
+live.
+
+| Channel | Variables |
+|---|---|
+| Discord | `DISCORD_WEBHOOK_URL` |
+| Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
+| Email | `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `NOTIFY_EMAIL_TO`; optional `SMTP_PORT` (default 587), `NOTIFY_EMAIL_FROM` (default `SMTP_USERNAME`) |
+
+**Discord:** open the Discord server you want alerts in, go to Server
+Settings → Integrations → Webhooks → New Webhook, pick the channel, and
+use **Copy Webhook URL**. That URL is the whole credential.
+
+**Telegram:**
+1. Message `@BotFather`, send `/newbot`, and follow the prompts. It
+   replies with the bot token.
+2. Send any message to your new bot. The bot can't message you first.
+3. Open `https://api.telegram.org/bot<TOKEN>/getUpdates` in a browser.
+   Your chat id is `result[0].message.chat.id`.
+
+**Email (Gmail):** Gmail won't accept your normal password over SMTP.
+1. Turn on 2-Step Verification for the Google account.
+2. Create an App Password at myaccount.google.com/apppasswords.
+3. Set `SMTP_HOST=smtp.gmail.com`, `SMTP_USERNAME=<your gmail>`,
+   `SMTP_PASSWORD=<the 16-character app password>`, and `NOTIFY_EMAIL_TO`
+   to wherever you want the alerts.
+
+Use port 587 (STARTTLS, the default). Cloud Run blocks outbound port 25.
+
+**On Cloud Run, store these in Secret Manager**, not plain env vars:
+
+```bash
+gcloud services enable secretmanager.googleapis.com
+printf '%s' 'https://discord.com/api/webhooks/...' | gcloud secrets create discord-webhook-url --data-file=-
+# ...repeat for telegram-bot-token, smtp-password; chat id / host / usernames can be plain env vars
+
+PROJECT_NUMBER=$(gcloud projects describe YOUR_PROJECT_ID --format='value(projectNumber)')
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+
+gcloud run services update astro-task-runner --region=YOUR_REGION \
+  --set-secrets="DISCORD_WEBHOOK_URL=discord-webhook-url:latest,TELEGRAM_BOT_TOKEN=telegram-bot-token:latest,SMTP_PASSWORD=smtp-password:latest" \
+  --update-env-vars="TELEGRAM_CHAT_ID=...,SMTP_HOST=smtp.gmail.com,SMTP_USERNAME=you@gmail.com,NOTIFY_EMAIL_TO=you@gmail.com"
+```
+
+`cd.yml`'s `gcloud run deploy --image ...` keeps env vars and secrets
+already set on the service, so this is a one-time step, not something CD
+has to know about.
+
+**Check the setup** without creating a task:
+
+```bash
+curl -X POST https://YOUR_CLOUD_RUN_URL/api/notifications \
+  -H 'Content-Type: application/json' -H "X-Tick-Secret: $SECRET" -d '{}'
+# → {"deliveries":[{"channel":"discord","success":true}, ...]}
+```
+
+Then schedule the digest. This example runs daily at 08:00 Manila time and
+covers the next 7 days, starting "today" each time it runs:
+
+```bash
+curl -X POST https://YOUR_CLOUD_RUN_URL/api/tasks/astro-calendar \
+  -H 'Content-Type: application/json' -d '{
+    "name": "Weekly sky ahead",
+    "astroCalendarRequest": { "timeZoneId": "Asia/Manila", "days": 7 },
+    "frequency": "DAILY", "preferredHourUtc": 0, "notify": true
+  }'
+```
+
 ## Troubleshooting
 
 | Symptom | Likely cause |
@@ -200,3 +288,9 @@ code change needed.
 | `cd.yml` fails at "Build image with Cloud Build" | Deploy SA missing `cloudbuild.builds.editor` or `storage.admin` |
 | `cd.yml` fails at "Deploy to Cloud Run" | Deploy SA missing `run.admin` or `iam.serviceAccountUser` |
 | Firestore calls fail with a "project not found"-style error despite `gcloud auth application-default login` | Set `GOOGLE_CLOUD_PROJECT` explicitly — step 6 |
+| `cd.yml` fails at "Build image with Cloud Build" with "billing account ... disabled in state closed" | Billing account closed or unlinked — step 1 |
+| Startup fails with "Notification channel '...' is partially configured" | Some, not all, of that channel's variables are set — § 9 |
+| `POST /api/notifications` returns `409 NO_NOTIFICATION_CHANNELS` | No channel variables set on this service — § 9 |
+| A delivery shows `"success": false` with `telegram responded 400: ... chat not found` | Wrong `TELEGRAM_CHAT_ID`, or you never messaged the bot first — § 9 |
+| Email delivery fails with an authentication error | Using the normal Gmail password instead of an App Password, or 2-Step Verification is off — § 9 |
+| A scheduled task's notification silently didn't arrive | Look for `Notification via <channel> failed` warnings in the Cloud Run logs; tick responses aren't read by anyone |

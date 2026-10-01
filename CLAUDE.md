@@ -8,10 +8,13 @@ historical record — update it, don't rewrite it.
 ## What this is
 
 Astro Task Runner is a solo hobby backend: Kotlin + Ktor, deployed to Cloud
-Run, backed by Firestore. It answers three astrophotography questions
-(when's it dark, are any meteor showers coming, give me tonight's summary)
-and wraps them in a minimal task-scheduling layer so the same computations
-can run on a timer instead of only on-demand. The astronomy logic is
+Run, backed by Firestore. It answers astrophotography questions (when's it
+dark, are any meteor showers coming, give me tonight's summary, what's on
+the sky calendar) and wraps them in a minimal task-scheduling layer so the
+same computations can run on a timer instead of only on-demand. A task can
+push its result to Discord, Telegram, and email. **Where it's heading:**
+an AstroCalendar-style sky digest built from verified sources and
+delivered on a schedule. `docs/ROADMAP.md` is the plan of record. The astronomy logic is
 currently **all dummy/hardcoded** — see "Known gaps" below. This is a
 portfolio piece as much as a working app, so code quality and docs matter
 as much as features.
@@ -34,6 +37,12 @@ via `FirestoreOptions.getDefaultInstance().service` by default, which needs
 Application Default Credentials. Running `./gradlew run` locally without
 `gcloud auth application-default login` (or `GOOGLE_APPLICATION_CREDENTIALS`)
 will fail at startup. Tests don't hit this — see "Resolved" #1 below.
+
+**Gotcha 2:** notification channels are configured by env vars
+(`DISCORD_WEBHOOK_URL`, `TELEGRAM_*`, `SMTP_*`; see `docs/SETUP.md` § 9).
+If none are set, nothing is sent. If a channel is only **partly**
+configured, startup fails on purpose. Tests never read these: `testModule()`
+passes an explicit, usually empty, notifier list.
 
 ## Architecture at a glance
 
@@ -71,18 +80,22 @@ everything else would have made that change hard to review.
 
 1. **All astronomy math is placeholder.** `DummyAstroMathService` assumes
    a fixed 20:00–03:00 dark window and derives "moon phase" from the day
-   of the month; `DummyAstroEventProvider` hardcodes only Perseids and
-   Geminids. Both classes now carry KDoc saying so explicitly. This is
+   of the month. `DummyAstroEventProvider` hardcodes only Perseids and
+   Geminids. `DummyAstroCalendarProvider` holds October 2026 only, copied
+   from a society poster and unverified. All three carry KDoc saying so,
+   and calendar events carry `source: "dummy: ..."`. This is
    fine for scaffolding but should not be described as working astronomy
-   anywhere in docs or demos without the "dummy" caveat. See roadmap
-   item 1.
+   anywhere in docs or demos without the "dummy" caveat. See
+   `docs/ROADMAP.md` phases 2–5.
 2. **No API versioning**, and the `/api/run/astro/*` vs `/api/tasks/*`
    naming split is unresolved — see `docs/CONVENTIONS.md`. Not urgent
    with zero external consumers, but don't add a third naming scheme.
-3. **Two task-creation routes that are structurally one operation**
-   (`/api/tasks/dark-window`, `/api/tasks/meteor-alert`) — not
-   consolidated behind a generic `POST /api/tasks` yet. See roadmap
-   item 3.
+3. **Three task-creation routes that are structurally one operation**
+   (`/api/tasks/dark-window`, `/api/tasks/meteor-alert`,
+   `/api/tasks/astro-calendar`), not yet consolidated behind a generic
+   `POST /api/tasks`. The third was added following the existing
+   checklist rather than doing the consolidation in the same change. See
+   roadmap item 3.
 4. **Generic 500 for malformed non-JSON edge cases and unexpected
    exceptions.** `StatusPages` (see "Resolved" below) now maps the
    specific exceptions this codebase actually throws to 4xx; anything
@@ -90,6 +103,14 @@ everything else would have made that change hard to review.
    `INTERNAL_ERROR` 500. That's the correct default (don't leak internals
    on unexpected errors), just noting it's a deliberately short list, not
    exhaustive input validation.
+5. **DAILY dark-window / meteor-alert tasks repeat the same date.** Their
+   payloads store a fixed `dateIso`, so every daily run reports the
+   creation date. `ASTRO_CALENDAR` avoids this with a null `startDateIso`
+   ("today when it runs"). Apply the same fix to the other two before
+   relying on them for daily notifications. See `docs/ROADMAP.md`.
+6. **GCP billing account is closed.** CD has failed since 2026-09-20 at
+   the Cloud Build step for this reason, so `main` is not deployed. This
+   is an ops fix, not a code fix: `docs/SETUP.md` step 1.
 
 ## Resolved
 
@@ -141,9 +162,22 @@ everything else would have made that change hard to review.
    var is unset (local dev, tests, and — until you configure it — prod),
    the check is skipped, so this is backward compatible until you opt in.
    See `docs/SETUP.md` for configuring this on Cloud Run + Cloud
-   Scheduler.
+   Scheduler. The same check now also guards `POST /api/notifications`
+   (`api/SharedSecret.kt`).
+7. **One failing task no longer aborts `tick`.** `runDarkWindowTask` had
+   no try/catch, so a bad payload (e.g. an unparseable `dateIso`) threw
+   out of `runAllEnabled()` and every task after it in that tick was
+   skipped. `TaskRunner.runTask` now has a single success/failure path for
+   all task types: failures are stored as `FAILED` and never escape.
+   Covered by `TaskRunnerFailureTest`.
 
 ## Roadmap (rough priority order)
+
+`docs/ROADMAP.md` is the detailed plan: notifications and calendar
+(phase 1, done), deploy (1b), USNO moon phases (2), IMO meteor dataset
+(3), local ephemeris for planets and deep sky (4), real dark window (5).
+It also lists the data sources and the rules for adding one. The
+original list below still holds; phases 2–5 refine items 1–2.
 
 1. Replace `DummyAstroMathService` with real sunset/sunrise + astronomical
    twilight + moon illumination calculations. *Capturing the Universe*
@@ -174,8 +208,14 @@ everything else would have made that change hard to review.
 1. Add the value to `TaskType` (`core/task/TaskType.kt`).
 2. Add domain request/response models under `core/<domain>/` if new, with
    `@Serializable`.
-3. Add a `run<Type>Task(...)` branch to `TaskRunner.runTask`'s `when`.
-4. Add a `Create<Type>TaskRequest` under `api/task/model/`.
+3. Add an `execute<Type>(...)` branch to `TaskRunner.execute`'s `when`,
+   returning the output JSON and a `Notification` built by a new
+   function in `core/task/TaskNotifications.kt`. Don't add try/catch: the
+   shared path in `runTask` records failures (see "Resolved" #7). If the
+   payload has a date, make it nullable and resolve it to "today" at run
+   time (see "Known gaps" #5).
+4. Add a `Create<Type>TaskRequest` under `api/task/model/`, including
+   `notify: Boolean = false`.
 5. Add a route function under `api/task/` following the existing
    `darkWindowTaskRoute` / `meteorAlertTaskRoute` shape, and register it in
    `Application.module()`.

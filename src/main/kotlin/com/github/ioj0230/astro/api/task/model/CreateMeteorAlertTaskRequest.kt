@@ -11,4 +11,5 @@ data class CreateMeteorAlertTaskRequest(
     val frequency: TaskFrequency = TaskFrequency.MANUAL,
     val preferredHourUtc: Int? = null,
     val enabled: Boolean = true,
+    val notify: Boolean = false,
 )

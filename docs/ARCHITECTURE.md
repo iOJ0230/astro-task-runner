@@ -15,27 +15,38 @@ com.github.ioj0230.astro
 ├── api/                 HTTP layer — Ktor route functions
 │   ├── DarkWindowRoute.kt, MeteorAlertRoute.kt, SkySummaryRoute.kt
 │   │     "run now" endpoints: receive a request, call a core service, respond
+│   ├── AstroCalendarRoute.kt  GET /api/calendar/events (read-only)
 │   ├── TaskRoute.kt     list / get / run / tick task endpoints
+│   ├── SharedSecret.kt  X-Tick-Secret check for tick + notifications
+│   ├── notify/          POST /api/notifications (send a test message)
 │   └── task/            per-task-type creation endpoints + request DTOs
 │
 ├── core/                Domain layer — plain Kotlin, no Ktor/Firestore imports
+│   ├── calendar/        AstroCalendarEvent, AstroCalendarProvider interface,
+│   │                    AstroCalendarService (merges providers)
 │   ├── darkwindow/      DarkWindow, DarkWindowRequest/Response
 │   ├── math/            AstroMathService interface
 │   ├── meteor/          AstroEventService interface, MeteorShowerEvent, DTOs
+│   ├── notify/          Notification, Notifier interface, NotificationService (fan-out)
 │   ├── sky/             SkySummaryService (orchestrates math + meteor), DTOs
-│   └── task/            Task, TaskType, TaskRepository interface, TaskRunner
+│   └── task/            Task, TaskType, TaskRepository interface, TaskRunner,
+│                        TaskNotifications (result → message text)
 │
 ├── infra/               Implementations of core interfaces — the only layer
 │   │                    allowed to know about external systems
+│   ├── calendar/        DummyAstroCalendarProvider (Oct 2026 only, placeholder)
 │   ├── math/            DummyAstroMathService     (placeholder calculations)
 │   ├── meteor/          DummyAstroEventProvider    (hardcoded showers)
+│   ├── notify/          Discord/Telegram (HTTP) + Email (SMTP) notifiers,
+│   │                    NotifierFactory (env vars → enabled channels)
 │   └── task/            FirestoreTaskRepository (prod), InMemoryTaskRepository (tests)
 │
 └── Application.kt       Ktor module setup + manual wiring (ServiceRegistry)
 ```
 
 **Dependency direction is one-way: `api → core ← infra`.** `core` defines
-interfaces (`AstroMathService`, `AstroEventService`, `TaskRepository`);
+interfaces (`AstroMathService`, `AstroEventService`, `TaskRepository`,
+`AstroCalendarProvider`, `Notifier`);
 `infra` implements them; `api` only ever talks to `core` types. This is
 what lets `TaskRunnerSchedulingTest` swap in `InMemoryTaskRepository` and
 stub services without touching Ktor at all. Route-level integration tests
@@ -51,6 +62,8 @@ flowchart LR
         R3[SkySummaryRoute]
         R4[TaskRoute]
         R5["task/*TaskRoute"]
+        R6[AstroCalendarRoute]
+        R7[NotificationRoute]
     end
 
     subgraph core["core/ (interfaces + domain logic)"]
@@ -59,6 +72,10 @@ flowchart LR
         I3[SkySummaryService]
         I4[TaskRunner]
         I5[["TaskRepository"]]
+        I6[AstroCalendarService]
+        I7[["AstroCalendarProvider"]]
+        I8[NotificationService]
+        I9[["Notifier"]]
     end
 
     subgraph infra["infra/ (implementations)"]
@@ -66,6 +83,8 @@ flowchart LR
         D2[DummyAstroEventProvider]
         D3[FirestoreTaskRepository]
         D4[InMemoryTaskRepository]
+        D5[DummyAstroCalendarProvider]
+        D6["Discord / Telegram / Email notifiers"]
     end
 
     R1 --> I1
@@ -78,11 +97,19 @@ flowchart LR
     I4 --> I5
     I4 --> I1
     I4 --> I2
+    I4 --> I6
+    I4 --> I8
+    R6 --> I6
+    R7 --> I8
+    I6 --> I7
+    I8 --> I9
 
     D1 -.implements.-> I1
     D2 -.implements.-> I2
     D3 -.implements.-> I5
     D4 -.implements.-> I5
+    D5 -.implements.-> I7
+    D6 -.implements.-> I9
 ```
 
 ## Wiring: `ServiceRegistry`
@@ -90,12 +117,14 @@ flowchart LR
 `Application.module()` builds every dependency once, by hand, in order:
 
 ```kotlin
-val astroMathService  = DummyAstroMathService()
-val astroEventService = DummyAstroEventProvider()
-val skySummaryService = SkySummaryService(astroMathService, astroEventService)
-val firestore         = FirestoreOptions.getDefaultInstance().service
-val taskRepository    = FirestoreTaskRepository(firestore, json)
-val taskRunner        = TaskRunner(taskRepository, astroMathService, astroEventService, skySummaryService, json)
+val astroMathService     = DummyAstroMathService()
+val astroEventService    = DummyAstroEventProvider()
+val skySummaryService    = SkySummaryService(astroMathService, astroEventService)
+val astroCalendarService = AstroCalendarService(listOf(DummyAstroCalendarProvider()))
+val notificationService  = NotificationService(NotifierFactory.fromEnvironment(System.getenv(), httpClient))
+val firestore            = FirestoreOptions.getDefaultInstance().service
+val taskRepository       = FirestoreTaskRepository(firestore, json)
+val taskRunner           = TaskRunner(taskRepository, ..., astroCalendarService, json, notificationService)
 ```
 
 ...and bundles them into a `ServiceRegistry` data class passed into every
@@ -129,6 +158,12 @@ sequenceDiagram
 `AstroMathService` and `AstroEventService` via `SkySummaryService`, which
 also builds the human-readable `overallSummary` string.
 
+`GET /api/calendar/events?timeZoneId=...&startDate=...&days=...` is the
+same idea as a plain read. `AstroCalendarService` asks every registered
+`AstroCalendarProvider` for events in the window, drops anything outside
+it, de-duplicates, and sorts by date. A missing `startDate` means "today
+in `timeZoneId`".
+
 ## Request lifecycle: task endpoints
 
 Tasks add a persistence + scheduling layer on top of the same domain
@@ -142,6 +177,7 @@ sequenceDiagram
     participant Route as DarkWindowTaskRoute
     participant Runner as TaskRunner
     participant Repo as TaskRepository (Firestore)
+    participant Notify as NotificationService
 
     Client->>Route: POST /api/tasks/dark-window {name, darkWindowRequest, frequency}
     Route->>Runner: createTask(name, DARK_WINDOW, payload, serializer, frequency, hour, enabled)
@@ -159,9 +195,21 @@ sequenceDiagram
     Runner->>Runner: decode payloadJson by TaskType, call the matching core service
     Runner->>Repo: update(task with lastStatus/lastRunAtIso)
     Repo-->>Runner: updated Task
-    Runner-->>Route: TaskRunResult(task, outputJson)
-    Route-->>Client: 200 {task, outputJson}
+    opt task.notify == true
+        Runner->>Notify: dispatch(success or failure message)
+        Notify-->>Runner: one NotificationDelivery per channel
+    end
+    Runner-->>Route: TaskRunResult(task, outputJson, deliveries)
+    Route-->>Client: 200 {task, outputJson, deliveries}
 ```
+
+Every task type goes through the same success/failure path in
+`TaskRunner.runTask`. If the task's work throws, the task is stored as
+`FAILED` with `lastError` set, and the exception never escapes `runTask`.
+That matters for `tick`: one broken task can't stop the others from
+running. Notification failures never fail a task. They come back as
+`deliveries` entries with `success: false`, and `TaskRoute` logs them as
+warnings, because nobody reads the response of a scheduled tick.
 
 `POST /api/tasks/tick` is the same `runTask` path, just invoked for every
 task where `isDue(task, now)` is true (see the state diagram below). It's
@@ -193,8 +241,12 @@ specifically so this logic is deterministically testable
 (`TaskRunnerSchedulingTest` fixes the clock rather than sleeping or mocking
 `Instant.now()`).
 
-Only `DARK_WINDOW` and `METEOR_ALERT` run through the persisted task path
-today; `SkySummaryService` has no task-route equivalent yet.
+`DARK_WINDOW`, `METEOR_ALERT`, and `ASTRO_CALENDAR` run through the
+persisted task path. `SkySummaryService` has no task-route equivalent yet.
+Watch out: the first two store a fixed `dateIso` in their payload, so a
+DAILY run reports the same date every day. `ASTRO_CALENDAR` avoids this
+with a null `startDateIso`, meaning "today when it runs". See
+`docs/ROADMAP.md` → "Known limitation".
 
 ## Data model
 
@@ -212,11 +264,13 @@ classDiagram
         String? lastError
         TaskFrequency frequency
         Int? preferredHourUtc
+        Boolean notify
     }
     class TaskType {
         <<enum>>
         DARK_WINDOW
         METEOR_ALERT
+        ASTRO_CALENDAR
     }
     class TaskStatus {
         <<enum>>
@@ -294,5 +348,7 @@ flowchart LR
   both, or retiring `deploy.ps1` in favor of `gh workflow run` once that's
   not a concern.
 - **Runtime config**: Cloud Run's service identity needs Firestore access
-  (via ADC) at runtime; there is no `.env` / secrets file in the repo —
-  everything server-side comes from the GCP service account's IAM roles.
+  (via ADC) at runtime. There is no `.env` or secrets file in the repo.
+  Notification credentials (Discord webhook URL, Telegram bot token, SMTP
+  password) come from env vars, ideally backed by Secret Manager. See
+  `docs/SETUP.md` § 9.

@@ -63,13 +63,27 @@ POST /api/run/astro/meteor-alert
 POST /api/run/astro/sky-summary
 ```
 
+🔭 Sky calendar (dummy data: October 2026 only, for now)
+```
+GET /api/calendar/events?timeZoneId=Asia/Manila&startDate=2026-10-01&days=31
+```
+
 🗓️ Tasks
 ```
-POST /api/tasks/dark-window   # create task
-POST /api/tasks/{id}/run      # run task manually
-POST /api/tasks/tick          # run all due tasks (for scheduling)
-GET  /api/tasks               # list tasks
+POST /api/tasks/dark-window      # create task
+POST /api/tasks/meteor-alert     # create task
+POST /api/tasks/astro-calendar   # create task ("notify": true to get it on Discord/Telegram/email)
+POST /api/tasks/{id}/run         # run task manually
+POST /api/tasks/tick             # run all due tasks (for scheduling)
+GET  /api/tasks                  # list tasks
 ```
+
+🔔 Notifications
+```
+POST /api/notifications          # send a test message to every configured channel
+```
+Channels (Discord, Telegram, email) are configured by env vars; see
+[`docs/SETUP.md`](docs/SETUP.md#9-notification-channels-discord-telegram-email).
 
 `tick` checks an `X-Tick-Secret` header against the `TASK_RUNNER_TICK_SECRET`
 env var when that var is set (unset = open, same as before). See
@@ -104,14 +118,18 @@ The project is structured to support clean architecture:
   and API-design conventions
 - [`docs/SETUP.md`](docs/SETUP.md) — GCP project, Firestore, and CI/CD
   secrets setup (start here if you're setting this up on a new machine)
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — where this is going: verified
+  data sources, phases, and cost
 - [`CHANGELOG.md`](CHANGELOG.md) — history of what's shipped
 
 ---
 
 ## Status
 
-This project currently uses dummy astronomy logic and hardcoded meteor data
-(Perseids & Geminids). Real astronomy APIs may be integrated next.
+This project currently uses dummy astronomy logic, hardcoded meteor data
+(Perseids & Geminids), and a one-month dummy sky calendar. Notifications
+work for real. Moving to verified sources (USNO, IMO, local ephemeris) is
+planned in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 
 Pull requests and suggestions are welcome!

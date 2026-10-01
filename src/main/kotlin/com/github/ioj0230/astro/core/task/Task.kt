@@ -16,6 +16,10 @@ data class Task(
     val lastError: String? = null,
     val frequency: TaskFrequency = TaskFrequency.MANUAL,
     val preferredHourUtc: Int? = null,
+    // Send the run result to every configured notification channel.
+    // Defaults to false so tasks stored before this field existed keep
+    // behaving exactly as they did.
+    val notify: Boolean = false,
 )
 
 @Serializable

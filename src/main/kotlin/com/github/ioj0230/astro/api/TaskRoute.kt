@@ -6,24 +6,15 @@ import com.github.ioj0230.astro.api.model.ApiErrorBody
 import com.github.ioj0230.astro.api.task.model.TaskListResponse
 import com.github.ioj0230.astro.api.task.model.TaskRunResponse
 import com.github.ioj0230.astro.api.task.model.TaskTickResponse
+import com.github.ioj0230.astro.core.task.TaskRunResult
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
-import io.ktor.server.request.header
+import io.ktor.server.application.log
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
-
-/**
- * The header + env var pair used to gate `POST /api/tasks/tick`. Cloud
- * Scheduler (or any external caller) must send
- * `X-Tick-Secret: <TASK_RUNNER_TICK_SECRET>`. If the env var isn't set
- * (local dev, tests), the check is skipped — see docs/CONVENTIONS.md and
- * CLAUDE.md "Resolved" #6 for why this is a minimal shared-secret check
- * rather than full auth.
- */
-private const val TICK_SECRET_HEADER = "X-Tick-Secret"
-private const val TICK_SECRET_ENV_VAR = "TASK_RUNNER_TICK_SECRET"
 
 fun Route.taskRoute(services: ServiceRegistry) {
     // List all tasks
@@ -62,27 +53,13 @@ fun Route.taskRoute(services: ServiceRegistry) {
             return@post
         }
 
-        call.respond(TaskRunResponse(task = result.task, outputJson = result.outputJson))
+        call.logFailedDeliveries(result)
+        call.respond(result.toResponse())
     }
 
     // Run all enabled + due tasks (for Cloud Scheduler)
     post("/api/tasks/tick") {
-        val expectedSecret = System.getenv(TICK_SECRET_ENV_VAR)
-        if (!expectedSecret.isNullOrBlank()) {
-            val providedSecret = call.request.header(TICK_SECRET_HEADER)
-            if (providedSecret != expectedSecret) {
-                call.respond(
-                    HttpStatusCode.Unauthorized,
-                    ApiErrorBody(
-                        ApiError(
-                            code = "UNAUTHORIZED",
-                            message = "Missing or invalid $TICK_SECRET_HEADER header",
-                        ),
-                    ),
-                )
-                return@post
-            }
-        }
+        if (!call.checkSharedSecret()) return@post
 
         val runResults = services.taskRunner.runAllEnabled()
 
@@ -90,10 +67,8 @@ fun Route.taskRoute(services: ServiceRegistry) {
             TaskTickResponse(
                 results =
                     runResults.map { result ->
-                        TaskRunResponse(
-                            task = result.task,
-                            outputJson = result.outputJson,
-                        )
+                        call.logFailedDeliveries(result)
+                        result.toResponse()
                     },
             )
 
@@ -104,3 +79,14 @@ fun Route.taskRoute(services: ServiceRegistry) {
 private fun missingIdError() = ApiErrorBody(ApiError(code = "MISSING_ID", message = "id path parameter is required"))
 
 private fun taskNotFoundError(id: String) = ApiErrorBody(ApiError(code = "TASK_NOT_FOUND", message = "No task with id $id"))
+
+private fun TaskRunResult.toResponse() = TaskRunResponse(task = task, outputJson = outputJson, deliveries = deliveries)
+
+// Scheduled ticks have no one reading the response, so a channel that
+// stops working (revoked webhook, expired app password) must show up in
+// the Cloud Run logs instead.
+private fun ApplicationCall.logFailedDeliveries(result: TaskRunResult) {
+    result.deliveries.filterNot { it.success }.forEach {
+        application.log.warn("Notification via ${it.channel} failed for task ${result.task.id}: ${it.error}")
+    }
+}
