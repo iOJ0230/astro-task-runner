@@ -9,6 +9,13 @@ don't wait until a "release" to write it down.
 ## Unreleased
 
 ### Fixed
+- **One failing task aborted the rest of `tick`.** Root cause: the
+  dark-window run path had no try/catch, unlike meteor-alert, so any
+  exception (e.g. an unparseable `dateIso`) escaped `runAllEnabled()`
+  and skipped every later due task. Every task type now shares one
+  success/failure path in `TaskRunner.runTask`. Regression test:
+  `TaskRunnerFailureTest`, confirmed to fail on the old code with
+  `DateTimeParseException`.
 - **Integration tests no longer touch real Firestore.**
   `Application.module()` now takes an optional `taskRepositoryOverride:
   TaskRepository?` (default `null` → real Firestore, unchanged for

@@ -163,6 +163,11 @@ sequenceDiagram
     Route-->>Client: 200 {task, outputJson}
 ```
 
+Every task type goes through the same success/failure path in
+`TaskRunner.runTask`. If the task's work throws, the task is stored as
+`FAILED` with `lastError` set, and the exception never escapes `runTask`.
+That matters for `tick`: one broken task can't stop the others.
+
 `POST /api/tasks/tick` is the same `runTask` path, just invoked for every
 task where `isDue(task, now)` is true (see the state diagram below). It's
 the endpoint an external scheduler (Cloud Scheduler, cron) is meant to
