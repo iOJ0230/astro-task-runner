@@ -1,5 +1,6 @@
 package com.github.ioj0230.astro.core.task
 
+import com.github.ioj0230.astro.core.calendar.AstroCalendarService
 import com.github.ioj0230.astro.core.darkwindow.DarkWindowRequest
 import com.github.ioj0230.astro.core.meteor.MeteorAlertRequest
 import com.github.ioj0230.astro.core.notify.FakeNotifier
@@ -28,6 +29,7 @@ class TaskRunnerFailureTest {
             astroMathService = DummyAstroMathService(),
             astroEventService = DummyAstroEventProvider(),
             skySummaryService = SkySummaryService(DummyAstroMathService(), DummyAstroEventProvider()),
+            astroCalendarService = AstroCalendarService(emptyList()),
             json = Json,
             notificationService = NotificationService(listOf(notifier)),
             clock = clock,

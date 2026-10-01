@@ -42,7 +42,9 @@ should eventually become something like `POST
 /api/astro/dark-window:compute` or simply be reframed as "create an
 ephemeral, unpersisted result" — not a priority to change today, but new
 endpoints should follow the `/api/tasks/*` resource style, not add a third
-scheme.
+scheme. The newer endpoints do: `GET /api/calendar/events` (a read is a
+GET with query parameters) and `POST /api/notifications` (sending a
+message creates a notification).
 
 Also note: `POST /api/tasks/dark-window` and `POST
 /api/tasks/meteor-alert` are two routes doing the same thing

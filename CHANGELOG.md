@@ -9,6 +9,18 @@ don't wait until a "release" to write it down.
 ## Unreleased
 
 ### Added
+- **Sky calendar.** New `core/calendar`: `AstroCalendarEvent` (date,
+  category, title, details, and a `source` on every event), the
+  `AstroCalendarProvider` interface, and `AstroCalendarService`, which
+  merges providers. Adds `GET /api/calendar/events`, the `ASTRO_CALENDAR`
+  task type, and `POST /api/tasks/astro-calendar`. The only provider so
+  far is `DummyAstroCalendarProvider`: October 2026 copied from UP
+  AstroSoc's AstroCalendar poster, explicitly marked unverified.
+- **Calendar sources fail independently.** If one provider throws, the
+  digest still goes out without that provider's events, names it in
+  `unavailableSources`, and the notification says it's incomplete. If
+  every provider throws, the run fails (`AllCalendarSourcesFailedException`)
+  instead of reporting an empty sky, so `ON_FAILURE` tasks alert you.
 - **Notifications to Discord, Telegram, and email.** New `core/notify`
   (`Notifier`, `NotificationService`) with `infra/notify` implementations:
   Discord webhook, Telegram Bot API, and SMTP via Angus Mail. Channels
