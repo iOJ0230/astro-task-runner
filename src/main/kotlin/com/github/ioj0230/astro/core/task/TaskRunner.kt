@@ -103,10 +103,29 @@ class TaskRunner(
 
         val nowIso = nowUtc().toString()
 
-        return when (existing.type) {
-            TaskType.DARK_WINDOW -> runDarkWindowTask(existing, nowIso)
-            TaskType.METEOR_ALERT -> runMeteorAlertTask(existing, nowIso)
-        }
+        // One success/failure path for every task type: a throwing task is
+        // recorded as FAILED on that task instead of escaping — which would
+        // otherwise abort `tick` for every task after it.
+        val outputJson =
+            try {
+                execute(existing)
+            } catch (e: Exception) {
+                val failed =
+                    existing.copy(
+                        lastRunAtIso = nowIso,
+                        lastStatus = TaskStatus.FAILED,
+                        lastError = e.message ?: "${existing.type} task failed",
+                    )
+                return TaskRunResult(taskRepository.update(failed), outputJson = null)
+            }
+
+        val succeeded =
+            existing.copy(
+                lastRunAtIso = nowIso,
+                lastStatus = TaskStatus.SUCCESS,
+                lastError = null,
+            )
+        return TaskRunResult(taskRepository.update(succeeded), outputJson)
     }
 
     fun runAllEnabled(): List<TaskRunResult> {
@@ -130,23 +149,21 @@ class TaskRunner(
         }
     }
 
-    private fun runDarkWindowTask(
-        task: Task,
-        nowIso: String,
-    ): TaskRunResult {
-        val request =
-            json.decodeFromString(
-                DarkWindowRequest.serializer(),
-                task.payloadJson,
-            )
+    /** Runs the task's work and returns its output JSON. Throws on failure. */
+    private fun execute(task: Task): String =
+        when (task.type) {
+            TaskType.DARK_WINDOW -> executeDarkWindow(task)
+            TaskType.METEOR_ALERT -> executeMeteorAlert(task)
+        }
 
-        val date = LocalDate.parse(request.dateIso)
+    private fun executeDarkWindow(task: Task): String {
+        val request = json.decodeFromString(DarkWindowRequest.serializer(), task.payloadJson)
 
         val window =
             astroMathService.computeDarkWindow(
                 latitude = request.latitude,
                 longitude = request.longitude,
-                date = date,
+                date = LocalDate.parse(request.dateIso),
                 timeZoneId = request.timeZoneId,
             )
 
@@ -156,56 +173,13 @@ class TaskRunner(
                 notes = "Task-run dark window result.",
             )
 
-        val outputJson = json.encodeToString(DarkWindowResponse.serializer(), response)
-
-        val updated =
-            task.copy(
-                lastRunAtIso = nowIso,
-                lastStatus = TaskStatus.SUCCESS,
-                lastError = null,
-            )
-
-        return TaskRunResult(taskRepository.update(updated), outputJson)
+        return json.encodeToString(DarkWindowResponse.serializer(), response)
     }
 
-    private fun runMeteorAlertTask(
-        task: Task,
-        nowIso: String,
-    ): TaskRunResult {
-        return try {
-            val request =
-                json.decodeFromString(
-                    MeteorAlertRequest.serializer(),
-                    task.payloadJson,
-                )
-
-            val response: MeteorAlertResponse =
-                astroEventService.upcomingMeteorShowers(request)
-
-            val outputJson =
-                json.encodeToString(
-                    MeteorAlertResponse.serializer(),
-                    response,
-                )
-
-            val updated =
-                task.copy(
-                    lastRunAtIso = nowIso,
-                    lastStatus = TaskStatus.SUCCESS,
-                    lastError = null,
-                )
-
-            TaskRunResult(taskRepository.update(updated), outputJson)
-        } catch (e: Exception) {
-            val updated =
-                task.copy(
-                    lastRunAtIso = nowIso,
-                    lastStatus = TaskStatus.FAILED,
-                    lastError = e.message ?: "Meteor alert task failed",
-                )
-
-            TaskRunResult(taskRepository.update(updated), outputJson = null)
-        }
+    private fun executeMeteorAlert(task: Task): String {
+        val request = json.decodeFromString(MeteorAlertRequest.serializer(), task.payloadJson)
+        val response: MeteorAlertResponse = astroEventService.upcomingMeteorShowers(request)
+        return json.encodeToString(MeteorAlertResponse.serializer(), response)
     }
 
     /**
