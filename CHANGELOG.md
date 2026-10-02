@@ -9,6 +9,17 @@ don't wait until a "release" to write it down.
 ## Unreleased
 
 ### Added
+- **Run history.** Every run (success or failure, manual or tick, even
+  a disabled task) is stored as a `TaskRun` in
+  `tasks/{taskId}/runs/{runId}`: trigger, start/finish time, status,
+  error, output, and per-channel notification deliveries. Before this,
+  only the latest status/error lived on the task and each run overwrote
+  the previous one. Read it with `GET /api/tasks/{id}/runs?limit=20`.
+  Runs carry an `expireAt` timestamp for a 90-day Firestore TTL policy
+  (`docs/SETUP.md` § 10). Failing to write history is logged and never
+  fails the run.
+- **A log line for every run,** not just failures: `INFO` on success,
+  `WARN` with the error on failure, plus a `WARN` per failed channel.
 - **Sky calendar.** New `core/calendar`: `AstroCalendarEvent` (date,
   category, title, details, and a `source` on every event), the
   `AstroCalendarProvider` interface, and `AstroCalendarService`, which

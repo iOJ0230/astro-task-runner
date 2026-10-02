@@ -9,6 +9,7 @@ import com.github.ioj0230.astro.core.meteor.MeteorAlertRequest
 import com.github.ioj0230.astro.core.meteor.MeteorAlertResponse
 import com.github.ioj0230.astro.core.sky.SkySummaryService
 import com.github.ioj0230.astro.infra.task.InMemoryTaskRepository
+import com.github.ioj0230.astro.infra.task.InMemoryTaskRunRepository
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import java.time.Clock
@@ -77,6 +78,7 @@ class TaskRunnerSchedulingTest {
             val runner =
                 TaskRunner(
                     taskRepository = repo,
+                    taskRunRepository = InMemoryTaskRunRepository(),
                     astroMathService = stubAstroMathService,
                     astroEventService = stubAstroEventService,
                     skySummaryService = stubSkySummaryService,
@@ -116,6 +118,7 @@ class TaskRunnerSchedulingTest {
             val runner =
                 TaskRunner(
                     taskRepository = repo,
+                    taskRunRepository = InMemoryTaskRunRepository(),
                     astroMathService = stubAstroMathService,
                     astroEventService = stubAstroEventService,
                     skySummaryService = stubSkySummaryService,

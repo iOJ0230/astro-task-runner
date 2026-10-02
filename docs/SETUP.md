@@ -312,6 +312,35 @@ curl -X POST https://YOUR_CLOUD_RUN_URL/api/notifications \
 | `"ON_FAILURE"` | Only when a run fails, with the error. Good for "tell me if it breaks" |
 | `"ALWAYS"` | Every run: the result on success, the error on failure |
 
+## 10. Run history and retention
+
+Every task run is stored in Firestore at `tasks/{taskId}/runs/{runId}`:
+status, error, output, trigger (`MANUAL` or `TICK`), timings, and the
+result of each notification channel. Read it with:
+
+```bash
+curl https://YOUR_CLOUD_RUN_URL/api/tasks/TASK_ID/runs?limit=20
+```
+
+or browse it in the console (Firestore → `tasks` → a task → `runs`).
+
+Runs carry an `expireAt` timestamp 90 days after they start. To have
+Firestore delete them automatically (free, and it keeps storage flat),
+turn on the TTL policy once:
+
+```bash
+gcloud firestore fields ttls update expireAt \
+  --collection-group=runs --enable-ttl
+```
+
+Without it, runs are kept forever. At one run per task per day that's
+small, but it never stops growing.
+
+Every run also writes one log line (`INFO` on success, `WARN` with the
+error on failure, plus a `WARN` per failed channel). In the console:
+Cloud Run → astro-task-runner → Logs, or Logs Explorer with
+`resource.type="cloud_run_revision" textPayload:"Task "`.
+
 ## Troubleshooting
 
 | Symptom | Likely cause |

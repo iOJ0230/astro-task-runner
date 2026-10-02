@@ -9,6 +9,7 @@ import com.github.ioj0230.astro.core.sky.SkySummaryService
 import com.github.ioj0230.astro.infra.math.DummyAstroMathService
 import com.github.ioj0230.astro.infra.meteor.DummyAstroEventProvider
 import com.github.ioj0230.astro.infra.task.InMemoryTaskRepository
+import com.github.ioj0230.astro.infra.task.InMemoryTaskRunRepository
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import java.time.Clock
@@ -26,6 +27,7 @@ class TaskRunnerFailureTest {
     private val runner =
         TaskRunner(
             taskRepository = repo,
+            taskRunRepository = InMemoryTaskRunRepository(),
             astroMathService = DummyAstroMathService(),
             astroEventService = DummyAstroEventProvider(),
             skySummaryService = SkySummaryService(DummyAstroMathService(), DummyAstroEventProvider()),

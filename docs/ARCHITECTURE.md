@@ -39,7 +39,8 @@ com.github.ioj0230.astro
 │   ├── meteor/          DummyAstroEventProvider    (hardcoded showers)
 │   ├── notify/          Discord/Telegram (HTTP) + Email (SMTP) notifiers,
 │   │                    NotifierFactory (env vars → enabled channels)
-│   └── task/            FirestoreTaskRepository (prod), InMemoryTaskRepository (tests)
+│   └── task/            FirestoreTaskRepository + FirestoreTaskRunRepository (prod),
+│                        InMemoryTaskRepository + InMemoryTaskRunRepository (tests)
 │
 └── Application.kt       Ktor module setup + manual wiring (ServiceRegistry)
 ```
@@ -204,8 +205,9 @@ sequenceDiagram
         Runner->>Notify: dispatch(result or error message)
         Notify-->>Runner: one NotificationDelivery per channel
     end
-    Runner-->>Route: TaskRunResult(task, outputJson, deliveries)
-    Route-->>Client: 200 {task, outputJson, deliveries}
+    Runner->>Repo: record(TaskRun) in tasks/{id}/runs
+    Runner-->>Route: TaskRunResult(task, outputJson, deliveries, runId)
+    Route-->>Client: 200 {task, outputJson, deliveries, runId}
 ```
 
 Every task type goes through the same success/failure path in
@@ -287,6 +289,18 @@ classDiagram
         MANUAL
         DAILY
     }
+    class TaskRun {
+        String id
+        String taskId
+        TaskRunTrigger trigger
+        String startedAtIso
+        String finishedAtIso
+        TaskStatus status
+        String? error
+        String? outputJson
+        List~NotificationDelivery~ deliveries
+    }
+    Task "1" --> "*" TaskRun : runs subcollection
     Task --> TaskType
     Task --> TaskStatus
     Task --> TaskFrequency
@@ -316,6 +330,17 @@ change if task volume ever grows is to store real fields instead of a JSON
 blob, so Firestore's query capabilities are usable
 (`collection.whereEqualTo("enabled", true)` instead of loading everything
 into memory to filter with `isDue`).
+
+**Run history** is different on purpose. `FirestoreTaskRunRepository`
+writes one document per run to `tasks/{taskId}/runs/{runId}` with real
+fields, not a JSON blob, so runs are readable in the Firestore console
+and can be ordered by the `startedAt` timestamp. (The ISO strings can't be
+used for ordering: `OffsetDateTime.toString()` drops `:00` seconds, so
+"10:00Z" sorts after "10:00:05Z".) Being a subcollection keeps "latest N
+runs of one task" a single-field query, which Firestore indexes
+automatically. `expireAt` (start + 90 days) feeds an optional TTL policy;
+see `docs/SETUP.md` § 10. Recording history never fails a run: a failed
+write is logged and the run's `runId` comes back null.
 
 `InMemoryTaskRepository` implements the same interface for tests
 (`TaskRunnerSchedulingTest`) via a `ConcurrentHashMap`. It is **not** wired

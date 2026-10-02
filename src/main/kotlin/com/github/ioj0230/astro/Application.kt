@@ -18,12 +18,14 @@ import com.github.ioj0230.astro.core.notify.NotificationService
 import com.github.ioj0230.astro.core.notify.Notifier
 import com.github.ioj0230.astro.core.sky.SkySummaryService
 import com.github.ioj0230.astro.core.task.TaskRepository
+import com.github.ioj0230.astro.core.task.TaskRunRepository
 import com.github.ioj0230.astro.core.task.TaskRunner
 import com.github.ioj0230.astro.infra.calendar.DummyAstroCalendarProvider
 import com.github.ioj0230.astro.infra.math.DummyAstroMathService
 import com.github.ioj0230.astro.infra.meteor.DummyAstroEventProvider
 import com.github.ioj0230.astro.infra.notify.NotifierFactory
 import com.github.ioj0230.astro.infra.task.FirestoreTaskRepository
+import com.github.ioj0230.astro.infra.task.FirestoreTaskRunRepository
 import com.google.cloud.firestore.FirestoreOptions
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
@@ -60,6 +62,7 @@ data class ServiceRegistry(
     val astroCalendarService: AstroCalendarService,
     val notificationService: NotificationService,
     val taskRepository: TaskRepository,
+    val taskRunRepository: TaskRunRepository,
     val taskRunner: TaskRunner,
     val json: Json,
 )
@@ -70,6 +73,7 @@ data class ServiceRegistry(
  * (`main()`) always leaves this null and gets a Firestore-backed
  * repository. See `testModule()` (test sourceSet) and CLAUDE.md
  * "Resolved" #1.
+ * @param taskRunRepositoryOverride Same, for run history.
  * @param notifiersOverride Same idea for notifications: tests pass an
  * explicit list (usually empty or fakes) so a developer's own
  * DISCORD_WEBHOOK_URL etc. never gets messaged by a test run. Null →
@@ -77,6 +81,7 @@ data class ServiceRegistry(
  */
 fun Application.module(
     taskRepositoryOverride: TaskRepository? = null,
+    taskRunRepositoryOverride: TaskRunRepository? = null,
     notifiersOverride: List<Notifier>? = null,
 ) {
     val json =
@@ -102,14 +107,14 @@ fun Application.module(
     val notificationService = NotificationService(notifiers)
     log.info("Notification channels enabled: ${notificationService.channels.ifEmpty { listOf("none") }}")
 
-    val taskRepository =
-        taskRepositoryOverride ?: run {
-            val firestore = FirestoreOptions.getDefaultInstance().service
-            FirestoreTaskRepository(firestore, json)
-        }
+    // Only touch Firestore (and its credentials) if something needs it.
+    val firestore by lazy { FirestoreOptions.getDefaultInstance().service }
+    val taskRepository = taskRepositoryOverride ?: FirestoreTaskRepository(firestore, json)
+    val taskRunRepository = taskRunRepositoryOverride ?: FirestoreTaskRunRepository(firestore, json)
     val taskRunner =
         TaskRunner(
             taskRepository = taskRepository,
+            taskRunRepository = taskRunRepository,
             astroMathService = astroMathService,
             astroEventService = astroEventService,
             skySummaryService = skySummaryService,
@@ -126,6 +131,7 @@ fun Application.module(
             astroCalendarService = astroCalendarService,
             notificationService = notificationService,
             taskRepository = taskRepository,
+            taskRunRepository = taskRunRepository,
             taskRunner = taskRunner,
             json = json,
         )
