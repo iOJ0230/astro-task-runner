@@ -17,6 +17,9 @@ import kotlinx.serialization.json.put
 /** Discord rejects messages over 2000 characters. */
 private const val DISCORD_MAX_CHARS = 2000
 
+/** Telegram rejects messages over 4096 characters. */
+private const val TELEGRAM_MAX_CHARS = 4096
+
 /** How much of an error response body to keep in a delivery error. */
 private const val ERROR_BODY_MAX_CHARS = 200
 
@@ -37,6 +40,31 @@ class DiscordWebhookNotifier(
                 put("content", truncate(renderPlainText(notification), DISCORD_MAX_CHARS))
             }
         postJsonOrThrow(httpClient, channel, webhookUrl, payload.toString())
+    }
+}
+
+/**
+ * Sends via the Telegram Bot API (`sendMessage`). The bot token is part of
+ * the URL path, so — same as Discord — the URL is never put in an error.
+ * Plain text on purpose: Telegram's Markdown modes reject messages with
+ * unescaped characters, which would turn a formatting slip into a lost
+ * notification.
+ */
+class TelegramNotifier(
+    private val httpClient: HttpClient,
+    private val botToken: String,
+    private val chatId: String,
+    private val apiBaseUrl: String = "https://api.telegram.org",
+) : Notifier {
+    override val channel = "telegram"
+
+    override suspend fun send(notification: Notification) {
+        val payload =
+            buildJsonObject {
+                put("chat_id", chatId)
+                put("text", truncate(renderPlainText(notification), TELEGRAM_MAX_CHARS))
+            }
+        postJsonOrThrow(httpClient, channel, "$apiBaseUrl/bot$botToken/sendMessage", payload.toString())
     }
 }
 
