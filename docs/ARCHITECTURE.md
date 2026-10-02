@@ -33,6 +33,8 @@ com.github.ioj0230.astro
 │   │                    allowed to know about external systems
 │   ├── math/            DummyAstroMathService     (placeholder calculations)
 │   ├── meteor/          DummyAstroEventProvider    (hardcoded showers)
+│   ├── notify/          Discord webhook notifier,
+│   │                    NotifierFactory (env vars → enabled channels)
 │   └── task/            FirestoreTaskRepository (prod), InMemoryTaskRepository (tests)
 │
 └── Application.kt       Ktor module setup + manual wiring (ServiceRegistry)
@@ -74,6 +76,7 @@ flowchart LR
         D2[DummyAstroEventProvider]
         D3[FirestoreTaskRepository]
         D4[InMemoryTaskRepository]
+        D6["Discord notifier"]
     end
 
     R1 --> I1
@@ -94,6 +97,7 @@ flowchart LR
     D2 -.implements.-> I2
     D3 -.implements.-> I5
     D4 -.implements.-> I5
+    D6 -.implements.-> I9
 ```
 
 ## Wiring: `ServiceRegistry`
@@ -106,7 +110,7 @@ val astroEventService = DummyAstroEventProvider()
 val skySummaryService = SkySummaryService(astroMathService, astroEventService)
 val firestore         = FirestoreOptions.getDefaultInstance().service
 val taskRepository    = FirestoreTaskRepository(firestore, json)
-val notificationService = NotificationService(emptyList())  // channels arrive in follow-up changes
+val notificationService = NotificationService(NotifierFactory.fromEnvironment(System.getenv(), httpClient))
 val taskRunner        = TaskRunner(taskRepository, ..., json, notificationService)
 ```
 
