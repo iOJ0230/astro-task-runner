@@ -33,7 +33,7 @@ com.github.ioj0230.astro
 │   │                    allowed to know about external systems
 │   ├── math/            DummyAstroMathService     (placeholder calculations)
 │   ├── meteor/          DummyAstroEventProvider    (hardcoded showers)
-│   ├── notify/          Discord/Telegram (HTTP) notifiers,
+│   ├── notify/          Discord/Telegram (HTTP) + Email (SMTP) notifiers,
 │   │                    NotifierFactory (env vars → enabled channels)
 │   └── task/            FirestoreTaskRepository (prod), InMemoryTaskRepository (tests)
 │
@@ -76,7 +76,7 @@ flowchart LR
         D2[DummyAstroEventProvider]
         D3[FirestoreTaskRepository]
         D4[InMemoryTaskRepository]
-        D6["Discord / Telegram notifiers"]
+        D6["Discord / Telegram / Email notifiers"]
     end
 
     R1 --> I1

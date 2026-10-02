@@ -225,6 +225,7 @@ live.
 |---|---|
 | Discord | `DISCORD_WEBHOOK_URL` |
 | Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
+| Email | `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `NOTIFY_EMAIL_TO`; optional `SMTP_PORT` (default 587), `NOTIFY_EMAIL_FROM` (default `SMTP_USERNAME`), `SMTP_STARTTLS` (default `true`; `false` only for a local mail catcher) |
 
 **Discord:** open the Discord server you want alerts in, go to Server
 Settings → Integrations → Webhooks → New Webhook, pick the channel, and
@@ -237,6 +238,15 @@ use **Copy Webhook URL**. That URL is the whole credential.
 3. Open `https://api.telegram.org/bot<TOKEN>/getUpdates` in a browser.
    Your chat id is `result[0].message.chat.id`.
 
+**Email (Gmail):** Gmail won't accept your normal password over SMTP.
+1. Turn on 2-Step Verification for the Google account.
+2. Create an App Password at myaccount.google.com/apppasswords.
+3. Set `SMTP_HOST=smtp.gmail.com`, `SMTP_USERNAME=<your gmail>`,
+   `SMTP_PASSWORD=<the 16-character app password>`, and `NOTIFY_EMAIL_TO`
+   to wherever you want the alerts.
+
+Use port 587 (STARTTLS, the default). Cloud Run blocks outbound port 25.
+
 **On Cloud Run, store the secrets in Secret Manager** (see "Where secrets
 go" at the top):
 
@@ -244,6 +254,7 @@ go" at the top):
 gcloud services enable secretmanager.googleapis.com
 printf '%s' 'https://discord.com/api/webhooks/...' | gcloud secrets create discord-webhook-url --data-file=-
 printf '%s' '123456:ABC...' | gcloud secrets create telegram-bot-token --data-file=-
+printf '%s' 'abcd efgh ijkl mnop' | gcloud secrets create smtp-password --data-file=-
 
 PROJECT_NUMBER=$(gcloud projects describe YOUR_PROJECT_ID --format='value(projectNumber)')
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
@@ -251,8 +262,8 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --role="roles/secretmanager.secretAccessor"
 
 gcloud run services update astro-task-runner --region=YOUR_REGION \
-  --set-secrets="DISCORD_WEBHOOK_URL=discord-webhook-url:latest,TELEGRAM_BOT_TOKEN=telegram-bot-token:latest" \
-  --update-env-vars="TELEGRAM_CHAT_ID=..."
+  --set-secrets="DISCORD_WEBHOOK_URL=discord-webhook-url:latest,TELEGRAM_BOT_TOKEN=telegram-bot-token:latest,SMTP_PASSWORD=smtp-password:latest" \
+  --update-env-vars="TELEGRAM_CHAT_ID=...,SMTP_HOST=smtp.gmail.com,SMTP_USERNAME=you@gmail.com,NOTIFY_EMAIL_TO=you@gmail.com"
 ```
 
 `cd.yml`'s `gcloud run deploy --image ...` keeps env vars and secrets
@@ -263,7 +274,27 @@ adding a new secret version, roll a new revision to pick it up, e.g.
 --update-secrets=DISCORD_WEBHOOK_URL=discord-webhook-url:latest`.
 
 **Local dev:** put the same variables in a `.env` file (gitignored) and
-`set -a; source .env; set +a` before `./gradlew run`.
+`set -a; source .env; set +a` before `./gradlew run`. `.env.example` is a
+commented starting point with the test setups below.
+
+**Testing without spamming your real channels.** Use separate test
+destinations, set only in your local `.env` or in a test deployment.
+Never point tests at the channels your real alerts go to.
+
+| Channel | Test destination | Notes |
+|---|---|---|
+| Email | **Mailtrap Email Testing** (`sandbox.smtp.mailtrap.io`, port 2525 or 587) | Catches every message in a web inbox, and nothing is delivered to anyone. Free tier is fine for this. Works with the notifier as-is (STARTTLS) |
+| Email | **Mailpit** on your machine (`localhost:1025`, web UI on `:8025`) | No account, fully offline. Needs `SMTP_STARTTLS=false`, which the app only accepts for `localhost` |
+| Discord | A **private test server or channel** with its own webhook | There's no Mailtrap-style sandbox for Discord, but a test server is free and takes two minutes. Delete its webhook when done |
+| Telegram | A **separate test bot** from @BotFather, messaging you or a private test group | Telegram has an official test environment, but it needs a separate test account. A second bot is simpler |
+
+To inspect exactly what the app sends to Discord, set
+`DISCORD_WEBHOOK_URL` to a request-catcher URL from a service like
+webhook.site. It shows the raw JSON body. Only send test text this way,
+since the service can read it.
+
+Automated tests never touch any of these: `./gradlew test` uses fakes,
+Ktor's `MockEngine`, and an in-process GreenMail SMTP server.
 
 **Check the setup** without creating a task:
 
@@ -294,3 +325,4 @@ curl -X POST https://YOUR_CLOUD_RUN_URL/api/notifications \
 | Startup fails with "Notification channel '...' is partially configured" | Some, not all, of that channel's variables are set — § 9 |
 | `POST /api/notifications` returns `409 NO_NOTIFICATION_CHANNELS` | No channel variables set on this service — § 9 |
 | A delivery shows `"success": false` with `telegram responded 400: ... chat not found` | Wrong `TELEGRAM_CHAT_ID`, or you never messaged the bot first — § 9 |
+| Email delivery fails with an authentication error | Using the normal Gmail password instead of an App Password, or 2-Step Verification is off — § 9 |

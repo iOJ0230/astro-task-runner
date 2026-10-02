@@ -44,11 +44,15 @@ dependencies {
     implementation("io.ktor:ktor-client-cio-jvm:2.3.11")
     implementation("io.ktor:ktor-client-content-negotiation-jvm:2.3.11")
 
+    // Email notifications (SMTP)
+    implementation("org.eclipse.angus:angus-mail:2.0.3")
+
     // Tests
     testImplementation(kotlin("test"))
     testImplementation("io.ktor:ktor-server-tests-jvm:2.3.11")
     testImplementation("io.ktor:ktor-client-content-negotiation-jvm:2.3.11")
     testImplementation("io.ktor:ktor-client-mock-jvm:2.3.11")
+    testImplementation("com.icegreen:greenmail:2.1.2")
 
     // Firestore
     implementation("com.google.cloud:google-cloud-firestore:3.24.3")

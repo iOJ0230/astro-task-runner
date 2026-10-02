@@ -9,9 +9,9 @@ don't wait until a "release" to write it down.
 ## Unreleased
 
 ### Added
-- **Notifications to Discord and Telegram.** New `core/notify`
+- **Notifications to Discord, Telegram, and email.** New `core/notify`
   (`Notifier`, `NotificationService`) with `infra/notify` implementations:
-  Discord webhook and Telegram Bot API. Channels
+  Discord webhook, Telegram Bot API, and SMTP via Angus Mail. Channels
   are enabled by env vars. A partially configured channel fails startup
   instead of being skipped silently. Channels are isolated: one failing
   channel doesn't affect the others or the task.
@@ -23,10 +23,16 @@ don't wait until a "release" to write it down.
   It is gated by the same `X-Tick-Secret` check as `tick`, and returns
   `409` when no channel is configured.
 - `docs/SETUP.md`: a "Where secrets go" table (GitHub vs Secret Manager
-  vs env vars), and § 9, channel setup for Discord and Telegram.
+  vs env vars), and § 9, channel setup for Discord, Telegram, and Gmail.
 - Tests for every channel's success and failure paths: fakes for routing
-  and policy, and Ktor `MockEngine` for Discord/Telegram (including a
-  check that network errors don't leak the token).
+  and policy, Ktor `MockEngine` for Discord/Telegram (including a
+  check that network errors don't leak the token), and an in-process
+  GreenMail SMTP server for email.
+- **Safe test destinations for every channel.** `.env.example` and
+  `docs/SETUP.md` § 9 cover Mailtrap's sandbox or a local Mailpit for
+  email, a private test server for Discord, and a test bot for Telegram.
+  New `SMTP_STARTTLS=false` for local mail catchers, refused for any
+  non-local host so the SMTP password never goes out unencrypted.
 
 ### Changed
 - `TaskRunner.runTask`/`runAllEnabled` are now `suspend`, because
