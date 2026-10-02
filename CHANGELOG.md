@@ -9,10 +9,10 @@ don't wait until a "release" to write it down.
 ## Unreleased
 
 ### Added
-- **Notification core.** New `core/notify` (`Notifier`,
-  `NotificationService`). Channels are isolated: one failing channel
-  doesn't affect the others or the task. The channel implementations
-  (Discord, Telegram, email) follow in their own changes.
+- **Notifications to Discord.** New `core/notify`
+  (`Notifier`, `NotificationService`) with `infra/notify` implementations:
+  Discord webhook. Channels are enabled by env vars. Channels are
+  isolated: one failing channel doesn't affect the others or the task.
 - **`notify` policy on tasks**: `NEVER` (default, so existing Firestore
   documents are unchanged), `ON_FAILURE`, or `ALWAYS`. Run and tick
   responses include a per-channel `deliveries` list, and failed
@@ -21,8 +21,10 @@ don't wait until a "release" to write it down.
   It is gated by the same `X-Tick-Secret` check as `tick`, and returns
   `409` when no channel is configured.
 - `docs/SETUP.md`: a "Where secrets go" table (GitHub vs Secret Manager
-  vs env vars), and § 9, notification setup and the notify policy.
-- Tests for routing and the notify policy, using fake channels.
+  vs env vars), and § 9, channel setup for Discord.
+- Tests for every channel's success and failure paths: fakes for routing
+  and policy, and Ktor `MockEngine` for Discord (including a check that
+  network errors don't leak the webhook URL).
 
 ### Changed
 - `TaskRunner.runTask`/`runAllEnabled` are now `suspend`, because
