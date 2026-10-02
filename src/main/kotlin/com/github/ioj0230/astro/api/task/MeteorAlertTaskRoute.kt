@@ -23,6 +23,7 @@ fun Route.meteorAlertTaskRoute(services: ServiceRegistry) {
                 frequency = req.frequency,
                 preferredHourUtc = req.preferredHourUtc,
                 enabled = req.enabled,
+                notify = req.notify,
             )
 
         call.respond(created)

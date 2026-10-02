@@ -11,7 +11,8 @@ Astro Task Runner is a solo hobby backend: Kotlin + Ktor, deployed to Cloud
 Run, backed by Firestore. It answers three astrophotography questions
 (when's it dark, are any meteor showers coming, give me tonight's summary)
 and wraps them in a minimal task-scheduling layer so the same computations
-can run on a timer instead of only on-demand. The astronomy logic is
+can run on a timer instead of only on-demand. A task can push its result,
+or only its failures, to Discord, Telegram, and email. The astronomy logic is
 currently **all dummy/hardcoded** — see "Known gaps" below. This is a
 portfolio piece as much as a working app, so code quality and docs matter
 as much as features.
@@ -34,6 +35,12 @@ via `FirestoreOptions.getDefaultInstance().service` by default, which needs
 Application Default Credentials. Running `./gradlew run` locally without
 `gcloud auth application-default login` (or `GOOGLE_APPLICATION_CREDENTIALS`)
 will fail at startup. Tests don't hit this — see "Resolved" #1 below.
+
+**Gotcha 2:** notification channels are configured by env vars
+(`DISCORD_WEBHOOK_URL`, `TELEGRAM_*`, `SMTP_*`; see `docs/SETUP.md` § 9).
+If none are set, nothing is sent. If a channel is only **partly**
+configured, startup fails on purpose. Tests never read these: `testModule()`
+passes an explicit, usually empty, notifier list.
 
 ## Architecture at a glance
 
@@ -141,7 +148,8 @@ everything else would have made that change hard to review.
    var is unset (local dev, tests, and — until you configure it — prod),
    the check is skipped, so this is backward compatible until you opt in.
    See `docs/SETUP.md` for configuring this on Cloud Run + Cloud
-   Scheduler.
+   Scheduler. The same check now also guards `POST /api/notifications`
+   (`api/SharedSecret.kt`).
 7. **One failing task no longer aborts `tick`.** `runDarkWindowTask` had
    no try/catch, so a bad payload (e.g. an unparseable `dateIso`) threw
    out of `runAllEnabled()` and every task after it in that tick was
@@ -181,9 +189,11 @@ everything else would have made that change hard to review.
 2. Add domain request/response models under `core/<domain>/` if new, with
    `@Serializable`.
 3. Add an `execute<Type>(...)` branch to `TaskRunner.execute`'s `when`.
-   Don't add try/catch: the shared path in `runTask` records failures
-   (see "Resolved" #7).
-4. Add a `Create<Type>TaskRequest` under `api/task/model/`.
+   It returns the output JSON and a `Notification` built by a new
+   function in `core/task/TaskNotifications.kt`. Don't add try/catch: the
+   shared path in `runTask` records failures (see "Resolved" #7).
+4. Add a `Create<Type>TaskRequest` under `api/task/model/`, including
+   `notify: NotifyPolicy = NotifyPolicy.NEVER`.
 5. Add a route function under `api/task/` following the existing
    `darkWindowTaskRoute` / `meteorAlertTaskRoute` shape, and register it in
    `Application.module()`.

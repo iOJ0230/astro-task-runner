@@ -14,6 +14,22 @@ Use this if you're setting the project up on a new machine, a new GCP
 project, recovering lost access, or just want to know what "the API was
 working and I could access it on the web" actually depended on.
 
+## Where secrets go
+
+There are two kinds of secret here, and they live in different places:
+
+| Secret | Store it in | Why there |
+|---|---|---|
+| `GCP_PROJECT_ID`, `GCP_SA_KEY`, `GCP_REGION` | **GitHub** → repo Settings → Secrets and variables → Actions | Only `cd.yml` uses them, and only while a deploy is running |
+| `DISCORD_WEBHOOK_URL`, `TELEGRAM_BOT_TOKEN`, `SMTP_PASSWORD`, `TASK_RUNNER_TICK_SECRET` | **GCP Secret Manager**, attached to the Cloud Run service (§ 9) | The running app needs them at all times. GitHub secrets don't exist outside a workflow run |
+| `TELEGRAM_CHAT_ID`, `SMTP_HOST`, `SMTP_USERNAME`, `NOTIFY_EMAIL_TO` | Plain Cloud Run env vars | Not sensitive on their own |
+| Anything, for local dev | Shell `export`s, or a `.env` file you `source` | `.env` is gitignored. Never commit a real value |
+
+Could the app secrets go in GitHub and be passed in by `cd.yml` with
+`--set-env-vars`? Technically yes, but they'd then sit in plain text in
+the Cloud Run console and in every revision's config, and rotating one
+would mean a redeploy. Secret Manager avoids both.
+
 ## What's required, and why
 
 | Piece | Used by |
@@ -188,7 +204,64 @@ gcloud scheduler jobs create http astro-task-runner-tick \
 
 Until you do this, `tick` stays unauthenticated (matches today's
 behavior) — set the env var whenever you're ready to lock it down, no
-code change needed.
+code change needed. (The command above sets it as a plain env var to
+keep the example short. Prefer storing it in Secret Manager like the § 9
+secrets: `--set-secrets=TASK_RUNNER_TICK_SECRET=tick-secret:latest`.)
+
+The same secret also guards `POST /api/notifications` (§ 9), which sends
+messages to your channels. Set it before configuring any channel on a
+publicly reachable service, or anyone with the URL can spam you.
+
+## 9. Notification channels (Discord, Telegram, email)
+
+Each channel is turned on by setting its environment variables. If none
+are set, the channel is skipped. The startup log
+line `Notification channels enabled: [...]` shows which channels are
+live.
+
+Channels are added in follow-up changes; each adds its row here.
+
+**On Cloud Run, store the secrets in Secret Manager** (see "Where secrets
+go" at the top):
+
+```bash
+gcloud services enable secretmanager.googleapis.com
+printf '%s' 'THE_SECRET_VALUE' | gcloud secrets create SECRET_NAME --data-file=-
+
+PROJECT_NUMBER=$(gcloud projects describe YOUR_PROJECT_ID --format='value(projectNumber)')
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+
+gcloud run services update astro-task-runner --region=YOUR_REGION \
+  --set-secrets="ENV_VAR_NAME=SECRET_NAME:latest"
+```
+
+`cd.yml`'s `gcloud run deploy --image ...` keeps env vars and secrets
+already set on the service, so this is a one-time step, not something CD
+has to know about. Secrets are read when an instance starts, so after
+adding a new secret version, roll a new revision to pick it up, e.g.
+`gcloud run services update astro-task-runner --region=YOUR_REGION
+--update-secrets=ENV_VAR_NAME=SECRET_NAME:latest`.
+
+**Local dev:** put the same variables in a `.env` file (gitignored) and
+`set -a; source .env; set +a` before `./gradlew run`.
+
+**Check the setup** without creating a task:
+
+```bash
+curl -X POST https://YOUR_CLOUD_RUN_URL/api/notifications \
+  -H 'Content-Type: application/json' -H "X-Tick-Secret: $SECRET" -d '{}'
+# → {"deliveries":[{"channel":"discord","success":true}, ...]}
+```
+
+**Choose what each task sends** with `"notify"` in the task-creation body:
+
+| `notify` | Sends |
+|---|---|
+| `"NEVER"` (default) | Nothing |
+| `"ON_FAILURE"` | Only when a run fails, with the error. Good for "tell me if it breaks" |
+| `"ALWAYS"` | Every run: the result on success, the error on failure |
 
 ## Troubleshooting
 
@@ -200,3 +273,4 @@ code change needed.
 | `cd.yml` fails at "Build image with Cloud Build" | Deploy SA missing `cloudbuild.builds.editor` or `storage.admin` |
 | `cd.yml` fails at "Deploy to Cloud Run" | Deploy SA missing `run.admin` or `iam.serviceAccountUser` |
 | Firestore calls fail with a "project not found"-style error despite `gcloud auth application-default login` | Set `GOOGLE_CLOUD_PROJECT` explicitly — step 6 |
+| `POST /api/notifications` returns `409 NO_NOTIFICATION_CHANNELS` | No channel variables set on this service — § 9 |

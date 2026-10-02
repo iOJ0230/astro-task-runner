@@ -1,6 +1,7 @@
 package com.github.ioj0230.astro.api.task.model
 
 import com.github.ioj0230.astro.core.darkwindow.DarkWindowRequest
+import com.github.ioj0230.astro.core.task.NotifyPolicy
 import com.github.ioj0230.astro.core.task.TaskFrequency
 import kotlinx.serialization.Serializable
 
@@ -11,4 +12,5 @@ data class CreateDarkWindowTaskRequest(
     val frequency: TaskFrequency = TaskFrequency.MANUAL,
     val preferredHourUtc: Int? = null,
     val enabled: Boolean = true,
+    val notify: NotifyPolicy = NotifyPolicy.NEVER,
 )
