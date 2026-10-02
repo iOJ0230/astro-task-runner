@@ -1,5 +1,6 @@
 package com.github.ioj0230.astro.core.task
 
+import com.github.ioj0230.astro.core.calendar.AstroCalendarService
 import com.github.ioj0230.astro.core.darkwindow.DarkWindow
 import com.github.ioj0230.astro.core.darkwindow.DarkWindowRequest
 import com.github.ioj0230.astro.core.math.AstroMathService
@@ -79,6 +80,7 @@ class TaskRunnerSchedulingTest {
                     astroMathService = stubAstroMathService,
                     astroEventService = stubAstroEventService,
                     skySummaryService = stubSkySummaryService,
+                    astroCalendarService = AstroCalendarService(emptyList()),
                     json = json,
                     clock = clock,
                 )
@@ -117,6 +119,7 @@ class TaskRunnerSchedulingTest {
                     astroMathService = stubAstroMathService,
                     astroEventService = stubAstroEventService,
                     skySummaryService = stubSkySummaryService,
+                    astroCalendarService = AstroCalendarService(emptyList()),
                     json = json,
                     clock = clock,
                 )

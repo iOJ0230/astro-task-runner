@@ -63,9 +63,16 @@ POST /api/run/astro/meteor-alert
 POST /api/run/astro/sky-summary
 ```
 
+🔭 Sky calendar (dummy data: October 2026 only, for now)
+```
+GET /api/calendar/events?timeZoneId=Asia/Manila&startDate=2026-10-01&days=31
+```
+
 🗓️ Tasks
 ```
 POST /api/tasks/dark-window   # create task
+POST /api/tasks/meteor-alert  # create task
+POST /api/tasks/astro-calendar  # create task
 POST /api/tasks/{id}/run      # run task manually
 POST /api/tasks/tick          # run all due tasks (for scheduling)
 GET  /api/tasks               # list tasks
@@ -118,8 +125,8 @@ The project is structured to support clean architecture:
 
 ## Status
 
-This project currently uses dummy astronomy logic and hardcoded meteor data
-(Perseids & Geminids). Real astronomy APIs may be integrated next.
+This project currently uses dummy astronomy logic, hardcoded meteor data
+(Perseids & Geminids), and a one-month dummy sky calendar. Real astronomy APIs may be integrated next.
 
 
 Pull requests and suggestions are welcome!

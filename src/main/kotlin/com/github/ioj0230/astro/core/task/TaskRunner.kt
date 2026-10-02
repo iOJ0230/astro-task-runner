@@ -1,5 +1,8 @@
 package com.github.ioj0230.astro.core.task
 
+import com.github.ioj0230.astro.core.calendar.AstroCalendarRequest
+import com.github.ioj0230.astro.core.calendar.AstroCalendarResponse
+import com.github.ioj0230.astro.core.calendar.AstroCalendarService
 import com.github.ioj0230.astro.core.darkwindow.DarkWindowRequest
 import com.github.ioj0230.astro.core.darkwindow.DarkWindowResponse
 import com.github.ioj0230.astro.core.math.AstroMathService
@@ -30,6 +33,7 @@ class TaskRunner(
     private val astroMathService: AstroMathService,
     private val astroEventService: AstroEventService,
     private val skySummaryService: SkySummaryService,
+    private val astroCalendarService: AstroCalendarService,
     private val json: Json,
     private val notificationService: NotificationService = NotificationService(emptyList()),
     private val clock: Clock = Clock.systemUTC(),
@@ -180,6 +184,7 @@ class TaskRunner(
         when (task.type) {
             TaskType.DARK_WINDOW -> executeDarkWindow(task)
             TaskType.METEOR_ALERT -> executeMeteorAlert(task)
+            TaskType.ASTRO_CALENDAR -> executeAstroCalendar(task)
         }
 
     private fun executeDarkWindow(task: Task): TaskOutput {
@@ -211,6 +216,16 @@ class TaskRunner(
         return TaskOutput(
             outputJson = json.encodeToString(MeteorAlertResponse.serializer(), response),
             notification = TaskNotifications.meteorAlert(task, response),
+        )
+    }
+
+    private fun executeAstroCalendar(task: Task): TaskOutput {
+        val request = json.decodeFromString(AstroCalendarRequest.serializer(), task.payloadJson)
+        val response = astroCalendarService.upcoming(request)
+
+        return TaskOutput(
+            outputJson = json.encodeToString(AstroCalendarResponse.serializer(), response),
+            notification = TaskNotifications.astroCalendar(task, response),
         )
     }
 

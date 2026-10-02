@@ -1,14 +1,17 @@
 package com.github.ioj0230.astro
 
+import com.github.ioj0230.astro.api.astroCalendarRoute
 import com.github.ioj0230.astro.api.darkWindowRoute
 import com.github.ioj0230.astro.api.meteorAlertRoute
 import com.github.ioj0230.astro.api.model.ApiError
 import com.github.ioj0230.astro.api.model.ApiErrorBody
 import com.github.ioj0230.astro.api.notify.notificationRoute
 import com.github.ioj0230.astro.api.skySummaryRoute
+import com.github.ioj0230.astro.api.task.astroCalendarTaskRoute
 import com.github.ioj0230.astro.api.task.darkWindowTaskRoute
 import com.github.ioj0230.astro.api.task.meteorAlertTaskRoute
 import com.github.ioj0230.astro.api.taskRoute
+import com.github.ioj0230.astro.core.calendar.AstroCalendarService
 import com.github.ioj0230.astro.core.math.AstroMathService
 import com.github.ioj0230.astro.core.meteor.AstroEventService
 import com.github.ioj0230.astro.core.notify.NotificationService
@@ -16,6 +19,7 @@ import com.github.ioj0230.astro.core.notify.Notifier
 import com.github.ioj0230.astro.core.sky.SkySummaryService
 import com.github.ioj0230.astro.core.task.TaskRepository
 import com.github.ioj0230.astro.core.task.TaskRunner
+import com.github.ioj0230.astro.infra.calendar.DummyAstroCalendarProvider
 import com.github.ioj0230.astro.infra.math.DummyAstroMathService
 import com.github.ioj0230.astro.infra.meteor.DummyAstroEventProvider
 import com.github.ioj0230.astro.infra.notify.NotifierFactory
@@ -53,6 +57,7 @@ data class ServiceRegistry(
     val astroMathService: AstroMathService,
     val astroEventService: AstroEventService,
     val skySummaryService: SkySummaryService,
+    val astroCalendarService: AstroCalendarService,
     val notificationService: NotificationService,
     val taskRepository: TaskRepository,
     val taskRunner: TaskRunner,
@@ -83,6 +88,7 @@ fun Application.module(
     val astroMathService: AstroMathService = DummyAstroMathService()
     val astroEventService: AstroEventService = DummyAstroEventProvider()
     val skySummaryService = SkySummaryService(astroMathService, astroEventService)
+    val astroCalendarService = AstroCalendarService(listOf(DummyAstroCalendarProvider()))
 
     val notifiers =
         notifiersOverride ?: run {
@@ -107,6 +113,7 @@ fun Application.module(
             astroMathService = astroMathService,
             astroEventService = astroEventService,
             skySummaryService = skySummaryService,
+            astroCalendarService = astroCalendarService,
             json = json,
             notificationService = notificationService,
         )
@@ -116,6 +123,7 @@ fun Application.module(
             astroMathService = astroMathService,
             astroEventService = astroEventService,
             skySummaryService = skySummaryService,
+            astroCalendarService = astroCalendarService,
             notificationService = notificationService,
             taskRepository = taskRepository,
             taskRunner = taskRunner,
@@ -175,6 +183,9 @@ fun Application.module(
         meteorAlertRoute(services)
         skySummaryRoute(services)
 
+        // read APIs
+        astroCalendarRoute(services)
+
         // notification APIs
         notificationRoute(services)
 
@@ -182,5 +193,6 @@ fun Application.module(
         taskRoute(services)
         darkWindowTaskRoute(services)
         meteorAlertTaskRoute(services)
+        astroCalendarTaskRoute(services)
     }
 }

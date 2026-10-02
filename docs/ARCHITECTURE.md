@@ -15,12 +15,15 @@ com.github.ioj0230.astro
 ├── api/                 HTTP layer — Ktor route functions
 │   ├── DarkWindowRoute.kt, MeteorAlertRoute.kt, SkySummaryRoute.kt
 │   │     "run now" endpoints: receive a request, call a core service, respond
+│   ├── AstroCalendarRoute.kt  GET /api/calendar/events (read-only)
 │   ├── TaskRoute.kt     list / get / run / tick task endpoints
 │   ├── SharedSecret.kt  X-Tick-Secret check for tick + notifications
 │   ├── notify/          POST /api/notifications (send a test message)
 │   └── task/            per-task-type creation endpoints + request DTOs
 │
 ├── core/                Domain layer — plain Kotlin, no Ktor/Firestore imports
+│   ├── calendar/        AstroCalendarEvent, AstroCalendarProvider interface,
+│   │                    AstroCalendarService (merges providers, isolates failures)
 │   ├── darkwindow/      DarkWindow, DarkWindowRequest/Response
 │   ├── math/            AstroMathService interface
 │   ├── meteor/          AstroEventService interface, MeteorShowerEvent, DTOs
@@ -31,6 +34,7 @@ com.github.ioj0230.astro
 │
 ├── infra/               Implementations of core interfaces — the only layer
 │   │                    allowed to know about external systems
+│   ├── calendar/        DummyAstroCalendarProvider (Oct 2026 only, placeholder)
 │   ├── math/            DummyAstroMathService     (placeholder calculations)
 │   ├── meteor/          DummyAstroEventProvider    (hardcoded showers)
 │   ├── notify/          Discord/Telegram (HTTP) + Email (SMTP) notifiers,
@@ -42,7 +46,7 @@ com.github.ioj0230.astro
 
 **Dependency direction is one-way: `api → core ← infra`.** `core` defines
 interfaces (`AstroMathService`, `AstroEventService`, `TaskRepository`,
-`Notifier`);
+`AstroCalendarProvider`, `Notifier`);
 `infra` implements them; `api` only ever talks to `core` types. This is
 what lets `TaskRunnerSchedulingTest` swap in `InMemoryTaskRepository` and
 stub services without touching Ktor at all. Route-level integration tests
@@ -58,6 +62,7 @@ flowchart LR
         R3[SkySummaryRoute]
         R4[TaskRoute]
         R5["task/*TaskRoute"]
+        R6[AstroCalendarRoute]
         R7[NotificationRoute]
     end
 
@@ -67,6 +72,8 @@ flowchart LR
         I3[SkySummaryService]
         I4[TaskRunner]
         I5[["TaskRepository"]]
+        I6[AstroCalendarService]
+        I7[["AstroCalendarProvider"]]
         I8[NotificationService]
         I9[["Notifier"]]
     end
@@ -76,6 +83,7 @@ flowchart LR
         D2[DummyAstroEventProvider]
         D3[FirestoreTaskRepository]
         D4[InMemoryTaskRepository]
+        D5[DummyAstroCalendarProvider]
         D6["Discord / Telegram / Email notifiers"]
     end
 
@@ -89,7 +97,10 @@ flowchart LR
     I4 --> I5
     I4 --> I1
     I4 --> I2
+    I4 --> I6
     I4 --> I8
+    R6 --> I6
+    I6 --> I7
     R7 --> I8
     I8 --> I9
 
@@ -97,6 +108,7 @@ flowchart LR
     D2 -.implements.-> I2
     D3 -.implements.-> I5
     D4 -.implements.-> I5
+    D5 -.implements.-> I7
     D6 -.implements.-> I9
 ```
 
@@ -144,6 +156,18 @@ sequenceDiagram
 `SkySummaryRoute` is the same shape but fans out to both
 `AstroMathService` and `AstroEventService` via `SkySummaryService`, which
 also builds the human-readable `overallSummary` string.
+
+`GET /api/calendar/events?timeZoneId=...&startDate=...&days=...` is the
+same idea as a plain read. `AstroCalendarService` asks every registered
+`AstroCalendarProvider` for events in the window, drops anything outside
+it, de-duplicates, and sorts by date. A missing `startDate` means "today
+in `timeZoneId`".
+
+Providers fail independently. A provider that throws is left out and
+listed in `unavailableSources`, and the summary says the digest is
+incomplete. If every provider throws, the service throws too: an empty
+"quiet sky" digest would be wrong, and failing lets `ON_FAILURE` tasks
+alert you.
 
 ## Request lifecycle: task endpoints
 
@@ -222,8 +246,11 @@ specifically so this logic is deterministically testable
 (`TaskRunnerSchedulingTest` fixes the clock rather than sleeping or mocking
 `Instant.now()`).
 
-Only `DARK_WINDOW` and `METEOR_ALERT` run through the persisted task path
-today; `SkySummaryService` has no task-route equivalent yet.
+`DARK_WINDOW`, `METEOR_ALERT`, and `ASTRO_CALENDAR` run through the
+persisted task path. `SkySummaryService` has no task-route equivalent yet.
+Watch out: the first two store a fixed `dateIso` in their payload, so a
+DAILY run reports the same date every day. `ASTRO_CALENDAR` avoids this
+with a null `startDateIso`, meaning "today when it runs".
 
 ## Data model
 
@@ -247,6 +274,7 @@ classDiagram
         <<enum>>
         DARK_WINDOW
         METEOR_ALERT
+        ASTRO_CALENDAR
     }
     class TaskStatus {
         <<enum>>

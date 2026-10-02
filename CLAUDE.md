@@ -9,8 +9,8 @@ historical record — update it, don't rewrite it.
 
 Astro Task Runner is a solo hobby backend: Kotlin + Ktor, deployed to Cloud
 Run, backed by Firestore. It answers three astrophotography questions
-(when's it dark, are any meteor showers coming, give me tonight's summary)
-and wraps them in a minimal task-scheduling layer so the same computations
+(when's it dark, are any meteor showers coming, give me tonight's summary,
+what's on the sky calendar) and wraps them in a minimal task-scheduling layer so the same computations
 can run on a timer instead of only on-demand. A task can push its result,
 or only its failures, to Discord, Telegram, and email. The astronomy logic is
 currently **all dummy/hardcoded** — see "Known gaps" below. This is a
@@ -78,18 +78,22 @@ everything else would have made that change hard to review.
 
 1. **All astronomy math is placeholder.** `DummyAstroMathService` assumes
    a fixed 20:00–03:00 dark window and derives "moon phase" from the day
-   of the month; `DummyAstroEventProvider` hardcodes only Perseids and
-   Geminids. Both classes now carry KDoc saying so explicitly. This is
+   of the month. `DummyAstroEventProvider` hardcodes only Perseids and
+   Geminids. `DummyAstroCalendarProvider` holds October 2026 only, copied
+   from a society poster and unverified. All three carry KDoc saying so,
+   and calendar events carry `source: "dummy: ..."`. This is
    fine for scaffolding but should not be described as working astronomy
    anywhere in docs or demos without the "dummy" caveat. See roadmap
    item 1.
 2. **No API versioning**, and the `/api/run/astro/*` vs `/api/tasks/*`
    naming split is unresolved — see `docs/CONVENTIONS.md`. Not urgent
    with zero external consumers, but don't add a third naming scheme.
-3. **Two task-creation routes that are structurally one operation**
-   (`/api/tasks/dark-window`, `/api/tasks/meteor-alert`) — not
-   consolidated behind a generic `POST /api/tasks` yet. See roadmap
-   item 3.
+3. **Three task-creation routes that are structurally one operation**
+   (`/api/tasks/dark-window`, `/api/tasks/meteor-alert`,
+   `/api/tasks/astro-calendar`), not yet consolidated behind a generic
+   `POST /api/tasks`. The third was added following the existing
+   checklist rather than doing the consolidation in the same change. See
+   roadmap item 3.
 4. **Generic 500 for malformed non-JSON edge cases and unexpected
    exceptions.** `StatusPages` (see "Resolved" below) now maps the
    specific exceptions this codebase actually throws to 4xx; anything
@@ -97,6 +101,11 @@ everything else would have made that change hard to review.
    `INTERNAL_ERROR` 500. That's the correct default (don't leak internals
    on unexpected errors), just noting it's a deliberately short list, not
    exhaustive input validation.
+5. **DAILY dark-window / meteor-alert tasks repeat the same date.** Their
+   payloads store a fixed `dateIso`, so every daily run reports the
+   creation date. `ASTRO_CALENDAR` avoids this with a null `startDateIso`
+   ("today when it runs"). Apply the same fix to the other two before
+   relying on them for daily notifications.
 
 ## Resolved
 
@@ -191,7 +200,9 @@ everything else would have made that change hard to review.
 3. Add an `execute<Type>(...)` branch to `TaskRunner.execute`'s `when`.
    It returns the output JSON and a `Notification` built by a new
    function in `core/task/TaskNotifications.kt`. Don't add try/catch: the
-   shared path in `runTask` records failures (see "Resolved" #7).
+   shared path in `runTask` records failures (see "Resolved" #7). If the
+   payload has a date, make it nullable and resolve it to "today" at run
+   time (see "Known gaps" #5).
 4. Add a `Create<Type>TaskRequest` under `api/task/model/`, including
    `notify: NotifyPolicy = NotifyPolicy.NEVER`.
 5. Add a route function under `api/task/` following the existing
