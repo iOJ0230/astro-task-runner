@@ -8,11 +8,9 @@ import com.github.ioj0230.astro.api.task.model.TaskRunListResponse
 import com.github.ioj0230.astro.api.task.model.TaskRunResponse
 import com.github.ioj0230.astro.api.task.model.TaskTickResponse
 import com.github.ioj0230.astro.core.task.TaskRunResult
-import com.github.ioj0230.astro.core.task.TaskStatus
 import io.ktor.http.HttpStatusCode
-import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
-import io.ktor.server.application.log
+import io.ktor.server.plugins.callid.callId
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
@@ -70,13 +68,12 @@ fun Route.taskRoute(services: ServiceRegistry) {
             return@post
         }
 
-        val result = services.taskRunner.runTask(id)
+        val result = services.taskRunner.runTask(id, requestId = call.callId)
         if (result == null) {
             call.respond(HttpStatusCode.NotFound, taskNotFoundError(id))
             return@post
         }
 
-        call.logRun(result)
         call.respond(result.toResponse())
     }
 
@@ -84,15 +81,12 @@ fun Route.taskRoute(services: ServiceRegistry) {
     post("/api/tasks/tick") {
         if (!call.checkSharedSecret()) return@post
 
-        val runResults = services.taskRunner.runAllEnabled()
+        val runResults = services.taskRunner.runAllEnabled(requestId = call.callId)
 
         val response =
             TaskTickResponse(
                 results =
-                    runResults.map { result ->
-                        call.logRun(result)
-                        result.toResponse()
-                    },
+                    runResults.map { it.toResponse() },
             )
 
         call.respond(response)
@@ -107,20 +101,3 @@ private const val DEFAULT_RUNS_PAGE = 20
 private const val MAX_RUNS_PAGE = 100
 
 private fun TaskRunResult.toResponse() = TaskRunResponse(task = task, outputJson = outputJson, deliveries = deliveries, runId = runId)
-
-// One log line per run, success or failure, plus a warning per failed
-// channel. Scheduled ticks have no one reading the response, so this (and
-// the stored TaskRun) is how a revoked webhook or an expired app password
-// gets noticed. Cloud Run ships these lines to Cloud Logging.
-private fun ApplicationCall.logRun(result: TaskRunResult) {
-    val task = result.task
-    val line = "Task ${task.id} (${task.name}, ${task.type}) ${task.lastStatus}, run ${result.runId}"
-    if (task.lastStatus == TaskStatus.FAILED) {
-        application.log.warn("$line: ${task.lastError}")
-    } else {
-        application.log.info(line)
-    }
-    result.deliveries.filterNot { it.success }.forEach {
-        application.log.warn("Notification via ${it.channel} failed for task ${task.id}: ${it.error}")
-    }
-}

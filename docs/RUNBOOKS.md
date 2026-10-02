@@ -15,8 +15,9 @@ Two tools come up in almost every runbook:
 
 - **Run history:** `curl "$URL/api/tasks/TASK_ID/runs?limit=5"`. Each run
   has its status, error, and per-channel `deliveries`.
-- **Logs:** Cloud Run → astro-task-runner → Logs. Every run logs one line
-  starting with `Task <id>`: `INFO` on success, `WARN` on failure.
+- **Logs:** structured JSON, searchable by field. Runbook 10 covers how to
+  query and trace them. The quickest: Logs Explorer with
+  `jsonPayload.event="task.run.finished" jsonPayload.taskId="TASK_ID"`.
 
 When a runbook teaches you something new, add it here. A runbook that's
 out of date is worse than none.
@@ -163,7 +164,9 @@ its document in the Firestore console: set `"enabled": false` inside the
 **Symptom:** a new revision fails to start, and Cloud Run keeps serving
 the previous one or shows errors.
 
-**Check:** the revision's logs. A common cause is
+**Check:** the revision's logs, or Logs Explorer with
+`jsonPayload.event="app.crashed"`, which holds the whole stack trace in
+one entry. A common cause is
 `Notification channel '…' is partially configured; missing: …`. That
 means only some of a channel's variables are set, which fails startup on
 purpose.
@@ -205,7 +208,66 @@ make Cloud Monitoring email you:
 
 1. Logs Explorer → query `resource.type="cloud_run_revision"
    resource.labels.service_name="astro-task-runner" severity>=ERROR`.
+   This works because the app logs JSON with a real `severity`. Plain-text
+   logs would have no severity, and the alert would never fire.
 2. "Create alert" from that query, notifying your email.
+
+It catches `app.crashed`, `request.unhandled_error` and
+`task.run.history_write_failed`. Task failures are `WARNING`, so they
+don't trigger it; those come through `ON_FAILURE` instead.
 
 Optionally, make the Cloud Scheduler job's own failures alert too (an
 alert on `cloud_scheduler_job` logs with `severity>=ERROR`).
+
+## 10. Find and trace logs
+
+Every log line is a JSON object. Cloud Logging stores its fields under
+`jsonPayload`, so you can filter on any of them. Fields you'll use most:
+
+| Field | Meaning |
+|---|---|
+| `event` | What happened, from `LogEvents` (e.g. `task.run.finished`) |
+| `requestId` | The HTTP request being served. Shared by every line it caused |
+| `taskId`, `runId` | Which task and which run. `runId` matches the run-history document |
+| `status`, `error`, `trigger`, `durationMs` | Outcome of a run |
+| `channel` | Notification channel, on delivery failures |
+
+**Where:** Console → Logging → Logs Explorer, with the resource set to the
+`astro-task-runner` Cloud Run service. Or from a terminal:
+
+```bash
+gcloud logging read 'resource.type="cloud_run_revision"
+  resource.labels.service_name="astro-task-runner"
+  jsonPayload.event="task.run.finished" jsonPayload.status="FAILED"' \
+  --freshness=7d --limit=20 --format=json
+```
+
+**Useful queries** (add them to the base filter above):
+
+| To find | Query |
+|---|---|
+| Every failed run | `jsonPayload.event="task.run.finished" jsonPayload.status="FAILED"` |
+| Everything about one task | `jsonPayload.taskId="TASK_ID"` |
+| Every failed delivery, by channel | `jsonPayload.event="notification.delivery.failed" jsonPayload.channel="telegram"` |
+| Errors only | `severity>=ERROR` |
+| Startup crashes | `jsonPayload.event="app.crashed"` |
+| Slow runs | `jsonPayload.event="task.run.finished" jsonPayload.durationMs>5000` |
+
+**Tracing one thing end to end.** Every entry point leads to the others:
+
+1. **From a notification, or the run history:** take the run's `runId`
+   (and `requestId`) from `GET /api/tasks/TASK_ID/runs`, then query
+   `jsonPayload.runId="RUN_ID"`.
+2. **From an API call you made:** every response carries an
+   `X-Request-Id` header. Query `jsonPayload.requestId="THAT_ID"` to get
+   every line the request produced. For a `tick`, that's every task it ran.
+3. **From a Cloud Run request log** (Cloud Run writes one per request):
+   with `GOOGLE_CLOUD_PROJECT` set on the service (`docs/SETUP.md` § 11),
+   the app's lines are linked to it by trace. Expand the request entry,
+   or click its trace id, to see them grouped.
+
+**How long logs are kept:** 30 days, free (the `_Default` log bucket).
+For longer, raise the bucket's retention (Logging → Logs Storage; days
+beyond 30 are billed) or route the logs to BigQuery with a sink. For
+"what happened to this task over months", use the run history in
+Firestore, which keeps 90 days by default.

@@ -12,6 +12,8 @@ import com.github.ioj0230.astro.api.task.darkWindowTaskRoute
 import com.github.ioj0230.astro.api.task.meteorAlertTaskRoute
 import com.github.ioj0230.astro.api.taskRoute
 import com.github.ioj0230.astro.core.calendar.AstroCalendarService
+import com.github.ioj0230.astro.core.log.LogEvents
+import com.github.ioj0230.astro.core.log.StructuredLog
 import com.github.ioj0230.astro.core.math.AstroMathService
 import com.github.ioj0230.astro.core.meteor.AstroEventService
 import com.github.ioj0230.astro.core.notify.NotificationService
@@ -21,6 +23,7 @@ import com.github.ioj0230.astro.core.task.TaskRepository
 import com.github.ioj0230.astro.core.task.TaskRunRepository
 import com.github.ioj0230.astro.core.task.TaskRunner
 import com.github.ioj0230.astro.infra.calendar.DummyAstroCalendarProvider
+import com.github.ioj0230.astro.infra.logging.CloudLoggingJsonLayout
 import com.github.ioj0230.astro.infra.math.DummyAstroMathService
 import com.github.ioj0230.astro.infra.meteor.DummyAstroEventProvider
 import com.github.ioj0230.astro.infra.notify.NotifierFactory
@@ -37,23 +40,39 @@ import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationStopped
 import io.ktor.server.application.call
 import io.ktor.server.application.install
-import io.ktor.server.application.log
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
+import io.ktor.server.plugins.callid.CallId
+import io.ktor.server.plugins.callid.callIdMdc
 import io.ktor.server.plugins.callloging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.statuspages.StatusPages
+import io.ktor.server.request.header
+import io.ktor.server.request.httpMethod
+import io.ktor.server.request.path
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import kotlinx.serialization.json.Json
 import java.time.DateTimeException
+import java.util.UUID
 
 fun main() {
+    // A crash (e.g. bad config at startup) would otherwise print a raw,
+    // multi-line stack trace that Cloud Logging splits into dozens of
+    // unsearchable entries. Route it through the JSON log instead.
+    Thread.setDefaultUncaughtExceptionHandler { thread, cause ->
+        appLog.error(LogEvents.APP_CRASHED, "Uncaught exception on thread ${thread.name}", cause = cause)
+    }
     embeddedServer(Netty, port = 8080) { module() }
         .start(wait = true)
 }
+
+private const val CLOUD_TRACE_HEADER = "X-Cloud-Trace-Context"
+private const val REQUEST_ID_HEADER = "X-Request-Id"
+
+private val appLog = StructuredLog.of(ServiceRegistry::class)
 
 data class ServiceRegistry(
     val astroMathService: AstroMathService,
@@ -105,7 +124,6 @@ fun Application.module(
             NotifierFactory.fromEnvironment(System.getenv(), httpClient)
         }
     val notificationService = NotificationService(notifiers)
-    log.info("Notification channels enabled: ${notificationService.channels.ifEmpty { listOf("none") }}")
 
     // Only touch Firestore (and its credentials) if something needs it.
     val firestore by lazy { FirestoreOptions.getDefaultInstance().service }
@@ -136,7 +154,23 @@ fun Application.module(
             json = json,
         )
 
-    install(CallLogging)
+    // Every request gets an id: Cloud Run's trace id when it sent one
+    // (X-Cloud-Trace-Context: TRACE_ID/SPAN_ID;o=1), otherwise a new one.
+    // It's put in the MDC as "requestId" (so every log line written while
+    // serving the request carries it), echoed back as X-Request-Id, and
+    // stored on any TaskRun the request causes.
+    install(CallId) {
+        retrieve { call -> call.request.header(CLOUD_TRACE_HEADER)?.substringBefore('/') }
+        generate { UUID.randomUUID().toString().replace("-", "") }
+        // Header values end up in logs; only accept plain ids.
+        verify { id -> id.length in 1..64 && id.all { it.isLetterOrDigit() || it == '-' } }
+        replyToHeader(REQUEST_ID_HEADER)
+    }
+    install(CallLogging) {
+        callIdMdc(CloudLoggingJsonLayout.REQUEST_ID_MDC_KEY)
+        // ANSI colors would end up as escape codes inside the JSON message.
+        disableDefaultColors()
+    }
     install(ContentNegotiation) {
         json(
             Json {
@@ -171,7 +205,13 @@ fun Application.module(
             )
         }
         exception<Throwable> { call, cause ->
-            call.application.environment.log.error("Unhandled exception", cause)
+            appLog.error(
+                LogEvents.REQUEST_UNHANDLED_ERROR,
+                "Unhandled exception",
+                "method" to call.request.httpMethod.value,
+                "path" to call.request.path(),
+                cause = cause,
+            )
             call.respond(
                 HttpStatusCode.InternalServerError,
                 ApiErrorBody(ApiError(code = "INTERNAL_ERROR", message = "Something went wrong")),
@@ -201,4 +241,11 @@ fun Application.module(
         meteorAlertTaskRoute(services)
         astroCalendarTaskRoute(services)
     }
+
+    // Last, so it only appears once everything above (Firestore included) is up.
+    appLog.info(
+        LogEvents.APP_STARTED,
+        "Started; notification channels: ${notificationService.channels.ifEmpty { listOf("none") }}",
+        "notificationChannels" to notificationService.channels.joinToString().ifEmpty { "none" },
+    )
 }

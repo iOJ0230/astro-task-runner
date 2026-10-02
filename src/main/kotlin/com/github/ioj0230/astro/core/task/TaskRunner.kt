@@ -5,6 +5,8 @@ import com.github.ioj0230.astro.core.calendar.AstroCalendarResponse
 import com.github.ioj0230.astro.core.calendar.AstroCalendarService
 import com.github.ioj0230.astro.core.darkwindow.DarkWindowRequest
 import com.github.ioj0230.astro.core.darkwindow.DarkWindowResponse
+import com.github.ioj0230.astro.core.log.LogEvents
+import com.github.ioj0230.astro.core.log.StructuredLog
 import com.github.ioj0230.astro.core.math.AstroMathService
 import com.github.ioj0230.astro.core.meteor.AstroEventService
 import com.github.ioj0230.astro.core.meteor.MeteorAlertRequest
@@ -16,8 +18,8 @@ import com.github.ioj0230.astro.core.sky.SkySummaryService
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
-import org.slf4j.LoggerFactory
 import java.time.Clock
+import java.time.Duration
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -42,7 +44,7 @@ class TaskRunner(
     private val notificationService: NotificationService = NotificationService(emptyList()),
     private val clock: Clock = Clock.systemUTC(),
 ) {
-    private val log = LoggerFactory.getLogger(TaskRunner::class.java)
+    private val log = StructuredLog.of(TaskRunner::class)
 
     private fun nowUtc(): OffsetDateTime = OffsetDateTime.now(clock)
 
@@ -109,11 +111,18 @@ class TaskRunner(
         )
     }
 
+    /**
+     * @param requestId id of the HTTP request that caused this run (the
+     * Cloud Run trace id when present), stored on the [TaskRun] so a run
+     * can be traced back to its log lines. One tick's runs share it.
+     */
     suspend fun runTask(
         taskId: String,
         trigger: TaskRunTrigger = TaskRunTrigger.MANUAL,
+        requestId: String? = null,
     ): TaskRunResult? {
         val existing = taskRepository.findById(taskId) ?: return null
+        val runId = UUID.randomUUID().toString()
         val startedAt = nowUtc()
 
         val result =
@@ -128,7 +137,61 @@ class TaskRunner(
                 TaskRunResult(taskRepository.update(updated), outputJson = null)
             }
 
-        return result.copy(runId = recordRun(result, trigger, startedAt))
+        val finishedAt = nowUtc()
+        val run =
+            TaskRun(
+                id = runId,
+                taskId = result.task.id,
+                taskName = result.task.name,
+                taskType = result.task.type,
+                trigger = trigger,
+                startedAtIso = startedAt.toString(),
+                finishedAtIso = finishedAt.toString(),
+                status = result.task.lastStatus,
+                error = result.task.lastError,
+                outputJson = result.outputJson,
+                deliveries = result.deliveries,
+                requestId = requestId,
+            )
+        logRun(run, Duration.between(startedAt, finishedAt))
+        return result.copy(runId = recordRun(run))
+    }
+
+    // One line per run, success or failure, plus one per failed channel.
+    // Nobody reads a scheduled tick's response, so this and the stored
+    // TaskRun are how a revoked webhook or an expired password gets noticed.
+    private fun logRun(
+        run: TaskRun,
+        duration: Duration,
+    ) {
+        val fields =
+            arrayOf(
+                "taskId" to run.taskId,
+                "taskName" to run.taskName,
+                "taskType" to run.taskType,
+                "runId" to run.id,
+                "trigger" to run.trigger,
+                "status" to run.status,
+                "error" to run.error,
+                "durationMs" to duration.toMillis(),
+                "channelsNotified" to run.deliveries.count { it.success },
+                "channelsFailed" to run.deliveries.count { !it.success },
+            )
+        if (run.status == TaskStatus.SUCCESS) {
+            log.info(LogEvents.TASK_RUN_FINISHED, "Task '${run.taskName}' succeeded", *fields)
+        } else {
+            log.warn(LogEvents.TASK_RUN_FINISHED, "Task '${run.taskName}' failed: ${run.error}", *fields)
+        }
+        run.deliveries.filterNot { it.success }.forEach { delivery ->
+            log.warn(
+                LogEvents.NOTIFICATION_DELIVERY_FAILED,
+                "Notification via ${delivery.channel} failed for task '${run.taskName}'",
+                "taskId" to run.taskId,
+                "runId" to run.id,
+                "channel" to delivery.channel,
+                "error" to delivery.error,
+            )
+        }
     }
 
     /**
@@ -136,32 +199,19 @@ class TaskRunner(
      * rejects the write, the task's own status is already stored, so log
      * and carry on rather than turning a successful run into an error.
      */
-    private fun recordRun(
-        result: TaskRunResult,
-        trigger: TaskRunTrigger,
-        startedAt: OffsetDateTime,
-    ): String? {
-        val run =
-            TaskRun(
-                id = UUID.randomUUID().toString(),
-                taskId = result.task.id,
-                taskName = result.task.name,
-                taskType = result.task.type,
-                trigger = trigger,
-                startedAtIso = startedAt.toString(),
-                finishedAtIso = nowUtc().toString(),
-                status = result.task.lastStatus,
-                error = result.task.lastError,
-                outputJson = result.outputJson,
-                deliveries = result.deliveries,
-            )
-        return try {
+    private fun recordRun(run: TaskRun): String? =
+        try {
             taskRunRepository.record(run).id
         } catch (e: Exception) {
-            log.error("Could not record run history for task ${run.taskId}", e)
+            log.error(
+                LogEvents.TASK_RUN_HISTORY_WRITE_FAILED,
+                "Could not record run history for task '${run.taskName}'",
+                "taskId" to run.taskId,
+                "runId" to run.id,
+                cause = e,
+            )
             null
         }
-    }
 
     private suspend fun executeAndStore(
         existing: Task,
@@ -209,7 +259,7 @@ class TaskRunner(
         val notification: Notification,
     )
 
-    suspend fun runAllEnabled(): List<TaskRunResult> {
+    suspend fun runAllEnabled(requestId: String? = null): List<TaskRunResult> {
         val all = taskRepository.findAll()
         val now = nowUtc()
 
@@ -219,7 +269,7 @@ class TaskRunner(
             }
 
         return due.map { task ->
-            runTask(task.id, TaskRunTrigger.TICK) ?: TaskRunResult(
+            runTask(task.id, TaskRunTrigger.TICK, requestId) ?: TaskRunResult(
                 task =
                     task.copy(
                         lastStatus = TaskStatus.FAILED,

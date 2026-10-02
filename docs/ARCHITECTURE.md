@@ -346,6 +346,32 @@ write is logged and the run's `runId` comes back null.
 (`TaskRunnerSchedulingTest`) via a `ConcurrentHashMap`. It is **not** wired
 into `Application.module()` — production always uses Firestore.
 
+## Logging and tracing
+
+All logging goes through `core.log.StructuredLog`: an event name (from
+`LogEvents`), a message, and key/value fields, on top of the slf4j 2
+key-value API, so `core` stays free of Logback. In production,
+`infra.logging.CloudLoggingJsonLayout` (wired in `logback.xml`) writes
+each event as one JSON line. It maps severity to Cloud Logging's names
+(WARN → WARNING), puts fields and MDC entries at the top level, puts
+stack traces in `stack_trace`, and adds `logging.googleapis.com/trace`
+when `GOOGLE_CLOUD_PROJECT` is set.
+
+Correlation works like this:
+
+```mermaid
+flowchart LR
+    H["X-Cloud-Trace-Context<br/>(or a new id)"] --> C[Ktor CallId]
+    C -->|MDC requestId| L[every log line]
+    C -->|X-Request-Id| R[HTTP response]
+    C -->|runTask requestId| TR[TaskRun.requestId in Firestore]
+    TR -->|runId| L
+```
+
+A run's `runId` is generated when the run starts, so its log lines and
+its history document share it. `main()` installs an uncaught-exception
+handler, so even a startup crash is a single JSON `app.crashed` entry.
+
 ## Deployment
 
 ```mermaid

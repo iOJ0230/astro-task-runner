@@ -9,6 +9,16 @@ don't wait until a "release" to write it down.
 ## Unreleased
 
 ### Added
+- **Structured JSON logging.** `core.log.StructuredLog` is the single
+  log writer: an event name from `LogEvents`, a message, and key/value
+  fields. `CloudLoggingJsonLayout` writes one JSON line per event with a
+  Cloud Logging `severity`, so fields are queryable as `jsonPayload.*`.
+- **Request tracing.** Each request gets a `requestId` (Cloud Run's trace
+  id when present). It's attached to every log line through the MDC,
+  returned as `X-Request-Id`, and stored on `TaskRun.requestId`. Run logs
+  carry `taskId`/`runId`, matching the run-history document.
+- `docs/RUNBOOKS.md` runbook 10 (finding and tracing logs), `docs/SETUP.md`
+  § 11, and a Logging section in `docs/CONVENTIONS.md`.
 - `docs/ROADMAP.md`: the plan of record for moving to verified sources
   (USNO, IMO, local ephemeris), how providers should handle a failing
   source (timeouts, one retry, caching, serving stale data), and the
@@ -75,6 +85,16 @@ don't wait until a "release" to write it down.
 - `.env` files are gitignored.
 
 ### Fixed
+- **Error alerts could never fire.** Root cause: there was no
+  `logback.xml`, so logs went to stdout as plain text. Cloud Logging
+  assigns no severity to plain-text lines, so runbook 9's
+  `severity>=ERROR` alert matched nothing. Logs are now JSON with an
+  explicit `severity`.
+- **A startup crash produced a raw, multi-line stack trace** that Cloud
+  Logging splits into many entries. `main()` now logs uncaught
+  exceptions as one `app.crashed` JSON entry.
+- Ktor's request log lines contained ANSI color codes, which would show
+  up as escape sequences in Cloud Logging. Colors are disabled.
 - **Documented why CD has been red since 2026-09-20.** The GCP billing
   account is closed (Cloud Build: "disabled in state closed"). This is an
   ops fix, recorded in `CLAUDE.md`, `docs/SETUP.md` and runbook 1. No
@@ -161,6 +181,16 @@ section prompted.
   string field) instead of only in memory.
 
 ### Fixed
+- **Error alerts could never fire.** Root cause: there was no
+  `logback.xml`, so logs went to stdout as plain text. Cloud Logging
+  assigns no severity to plain-text lines, so runbook 9's
+  `severity>=ERROR` alert matched nothing. Logs are now JSON with an
+  explicit `severity`.
+- **A startup crash produced a raw, multi-line stack trace** that Cloud
+  Logging splits into many entries. `main()` now logs uncaught
+  exceptions as one `app.crashed` JSON entry.
+- Ktor's request log lines contained ANSI color codes, which would show
+  up as escape sequences in Cloud Logging. Colors are disabled.
 - **Documented why CD has been red since 2026-09-20.** The GCP billing
   account is closed (Cloud Build: "disabled in state closed"). This is an
   ops fix, recorded in `CLAUDE.md`, `docs/SETUP.md` and runbook 1. No

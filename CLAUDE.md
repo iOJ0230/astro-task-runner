@@ -45,6 +45,11 @@ If none are set, nothing is sent. If a channel is only **partly**
 configured, startup fails on purpose. Tests never read these: `testModule()`
 passes an explicit, usually empty, notifier list.
 
+**Gotcha 3:** production logs are JSON (`src/main/resources/logback.xml`),
+tests are plain text (`src/test/resources/logback-test.xml`). Log only
+through `StructuredLog` with an event from `LogEvents`; see
+`docs/CONVENTIONS.md` → "Logging".
+
 ## Architecture at a glance
 
 Four layers, one package root (`com.github.ioj0230.astro`):
@@ -181,6 +186,11 @@ everything else would have made that change hard to review.
    all. Every run is now a `TaskRun` document under
    `tasks/{id}/runs`, readable via `GET /api/tasks/{id}/runs`. See
    `docs/SETUP.md` § 10 for the 90-day TTL policy.
+9. **Error alerts couldn't fire.** With no `logback.xml`, logs were plain
+   text, which Cloud Logging gives no severity, so `severity>=ERROR`
+   matched nothing. Logs are now structured JSON via `StructuredLog` +
+   `CloudLoggingJsonLayout`, correlated by `requestId`/`taskId`/`runId`.
+   See `docs/RUNBOOKS.md` runbook 10.
 
 ## Roadmap (rough priority order)
 

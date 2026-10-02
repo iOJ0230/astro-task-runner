@@ -120,6 +120,40 @@ check first. If a new exception type becomes common enough to need its
 own mapping, add it next to the existing `exception<...>` blocks in
 `Application.kt` rather than letting it fall through to the generic 500.
 
+## Logging
+
+- **Always log through `core.log.StructuredLog`**, never `println`, a raw
+  slf4j `Logger`, or `application.log`. Get one per class with
+  `private val log = StructuredLog.of(MyClass::class)`, then:
+
+  ```kotlin
+  log.warn(
+      LogEvents.NOTIFICATION_DELIVERY_FAILED,
+      "Notification via telegram failed",
+      "taskId" to task.id, "channel" to "telegram", "error" to error,
+  )
+  ```
+
+- **Every log has an event name from `LogEvents`.** Add new names there,
+  in the `area.thing.what_happened` format. The event name is what queries
+  and alerts filter on. The message is for humans and can change freely.
+- **Fields are camelCase and named consistently**: `taskId`, `runId`,
+  `channel`, `error`, `durationMs`. Reuse an existing name before
+  inventing a synonym. Numbers stay numbers, so `durationMs>5000` works
+  in queries.
+- **Don't add `requestId` yourself.** It comes from the MDC (set per
+  request by Ktor's `CallId` + `CallLogging`) and is attached to every
+  line automatically.
+- **Levels:** `INFO` for normal operations, `WARN` for a failure the app
+  handled (a task failed, a channel failed), `ERROR` for something that
+  needs a human (crash, unhandled exception, history write failed). Only
+  `ERROR` triggers the alert in `docs/RUNBOOKS.md` runbook 9.
+- **Never log secrets**: no webhook URLs, tokens, passwords, or request
+  bodies that might hold them. Logs are kept for 30 days and are readable
+  by anyone with log access to the project.
+- Test log output with `LogCapture` (test sources), which records each
+  event's level, fields and MDC.
+
 ## Kotlin style
 
 - Formatting is enforced by **ktlint** (`org.jlleitschuh.gradle.ktlint`,

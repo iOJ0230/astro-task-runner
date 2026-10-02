@@ -75,6 +75,7 @@ internal object TaskRunDocuments {
             "error" to run.error,
             "outputJson" to run.outputJson,
             "deliveriesJson" to json.encodeToString(deliveriesSerializer, run.deliveries),
+            "requestId" to run.requestId,
             "startedAtIso" to run.startedAtIso,
             "finishedAtIso" to run.finishedAtIso,
             "startedAt" to timestamp(startedAt),
@@ -97,6 +98,7 @@ internal object TaskRunDocuments {
             status = TaskStatus.valueOf(fields["status"] as String),
             error = fields["error"] as String?,
             outputJson = fields["outputJson"] as String?,
+            requestId = fields["requestId"] as String?,
             deliveries = (fields["deliveriesJson"] as String?)?.let { json.decodeFromString(deliveriesSerializer, it) }.orEmpty(),
         )
 

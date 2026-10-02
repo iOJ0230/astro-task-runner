@@ -33,6 +33,8 @@ data class TaskRun(
     val outputJson: String? = null,
     // One entry per notification channel; empty when nothing was sent
     val deliveries: List<NotificationDelivery> = emptyList(),
+    // HTTP request that caused the run; search logs for jsonPayload.requestId
+    val requestId: String? = null,
 )
 
 interface TaskRunRepository {
