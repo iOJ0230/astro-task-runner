@@ -9,6 +9,14 @@ don't wait until a "release" to write it down.
 ## Unreleased
 
 ### Added
+- `docs/ROADMAP.md`: the plan of record for moving to verified sources
+  (USNO, IMO, local ephemeris), how providers should handle a failing
+  source (timeouts, one retry, caching, serving stale data), and the
+  billing and cost answer.
+- `docs/RUNBOOKS.md`: symptom → check → fix → verify steps for failing
+  deploys, missing or failing notifications, rotating secrets,
+  scheduling, failing tasks, bad config, incomplete digests, and
+  alerting on service-level errors.
 - **Run history.** Every run (success or failure, manual or tick, even
   a disabled task) is stored as a `TaskRun` in
   `tasks/{taskId}/runs/{runId}`: trigger, start/finish time, status,
@@ -67,6 +75,10 @@ don't wait until a "release" to write it down.
 - `.env` files are gitignored.
 
 ### Fixed
+- **Documented why CD has been red since 2026-09-20.** The GCP billing
+  account is closed (Cloud Build: "disabled in state closed"). This is an
+  ops fix, recorded in `CLAUDE.md`, `docs/SETUP.md` and runbook 1. No
+  code change.
 - **One failing task aborted the rest of `tick`.** Root cause: the
   dark-window run path had no try/catch, unlike meteor-alert, so any
   exception (e.g. an unparseable `dateIso`) escaped `runAllEnabled()`
@@ -149,6 +161,10 @@ section prompted.
   string field) instead of only in memory.
 
 ### Fixed
+- **Documented why CD has been red since 2026-09-20.** The GCP billing
+  account is closed (Cloud Build: "disabled in state closed"). This is an
+  ops fix, recorded in `CLAUDE.md`, `docs/SETUP.md` and runbook 1. No
+  code change.
 - Several iterations on the Cloud Run CD workflow: explicit `gcloud`
   credential handling, avoided a `cloudresourcemanager` dependency in the
   CD sanity check, and disabled Cloud Build log streaming after it caused
