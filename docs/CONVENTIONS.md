@@ -161,6 +161,8 @@ own mapping, add it next to the existing `exception<...>` blocks in
   `.sent`. The default is no channels.
 - HTTP clients (notifiers, and future astronomy APIs) are tested with
   Ktor's `MockEngine` (`HttpNotifiersTest`), never the real service.
+  Email is tested against an in-process GreenMail SMTP server
+  (`EmailNotifierTest`).
 - Test names use backtick-quoted sentences (`` `should not run MANUAL
   tasks`() ``) — keep using full sentences, not `testX()`/camelCase names;
   it's the existing convention and it's more readable in CI output.

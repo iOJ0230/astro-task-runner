@@ -46,3 +46,4 @@ bin/
 ### Local secrets (notification channels etc.) ###
 .env
 .env.*
+!.env.example

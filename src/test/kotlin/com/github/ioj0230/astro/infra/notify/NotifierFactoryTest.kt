@@ -17,26 +17,21 @@ class NotifierFactoryTest {
     }
 
     @Test
-    fun `discord is built when its webhook url is set`() {
-        val channels =
-            NotifierFactory.fromEnvironment(mapOf("DISCORD_WEBHOOK_URL" to "https://discord.test/hook"), httpClient)
-                .map { it.channel }
-
-        assertEquals(listOf("discord"), channels)
-    }
-
-    @Test
-    fun `discord and telegram are built when fully configured`() {
+    fun `all three channels are built when fully configured`() {
         val env =
             mapOf(
                 "DISCORD_WEBHOOK_URL" to "https://discord.test/hook",
                 "TELEGRAM_BOT_TOKEN" to "123:abc",
                 "TELEGRAM_CHAT_ID" to "42",
+                "SMTP_HOST" to "smtp.gmail.com",
+                "SMTP_USERNAME" to "me@example.com",
+                "SMTP_PASSWORD" to "app-password",
+                "NOTIFY_EMAIL_TO" to "me@example.com",
             )
 
         val channels = NotifierFactory.fromEnvironment(env, httpClient).map { it.channel }
 
-        assertEquals(listOf("discord", "telegram"), channels)
+        assertEquals(listOf("discord", "telegram", "email"), channels)
     }
 
     @Test
@@ -51,5 +46,36 @@ class NotifierFactoryTest {
     @Test
     fun `blank values count as unset`() {
         assertTrue(NotifierFactory.fromEnvironment(mapOf("DISCORD_WEBHOOK_URL" to " "), httpClient).isEmpty())
+    }
+
+    private val localMailCatcher =
+        mapOf(
+            "SMTP_HOST" to "localhost",
+            "SMTP_PORT" to "1025",
+            "SMTP_USERNAME" to "dev",
+            "SMTP_PASSWORD" to "dev",
+            "NOTIFY_EMAIL_TO" to "me@example.com",
+            "SMTP_STARTTLS" to "false",
+        )
+
+    @Test
+    fun `STARTTLS can be turned off for a local mail catcher`() {
+        assertEquals(listOf("email"), NotifierFactory.fromEnvironment(localMailCatcher, httpClient).map { it.channel })
+    }
+
+    @Test
+    fun `STARTTLS cannot be turned off for a remote server`() {
+        val error =
+            assertFailsWith<IllegalArgumentException> {
+                NotifierFactory.fromEnvironment(localMailCatcher + ("SMTP_HOST" to "smtp.gmail.com"), httpClient)
+            }
+        assertTrue(error.message!!.contains("unencrypted"), error.message)
+    }
+
+    @Test
+    fun `SMTP_STARTTLS only accepts true or false`() {
+        assertFailsWith<IllegalArgumentException> {
+            NotifierFactory.fromEnvironment(localMailCatcher + ("SMTP_STARTTLS" to "no"), httpClient)
+        }
     }
 }
