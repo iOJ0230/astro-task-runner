@@ -4,6 +4,8 @@ import com.github.ioj0230.astro.ServiceRegistry
 import com.github.ioj0230.astro.api.checkSharedSecret
 import com.github.ioj0230.astro.api.model.ApiError
 import com.github.ioj0230.astro.api.model.ApiErrorBody
+import com.github.ioj0230.astro.core.log.LogEvents
+import com.github.ioj0230.astro.core.log.StructuredLog
 import com.github.ioj0230.astro.core.notify.Notification
 import com.github.ioj0230.astro.core.notify.NotificationDelivery
 import io.ktor.http.HttpStatusCode
@@ -31,6 +33,8 @@ data class SendNotificationResponse(
  * Discord/Telegram/email setup without creating a task. Gated by the same
  * shared secret as `tick`, since it causes outbound messages.
  */
+private val log = StructuredLog.of(SendNotificationRequest::class)
+
 fun Route.notificationRoute(services: ServiceRegistry) {
     post("/api/notifications") {
         if (!call.checkSharedSecret()) return@post
@@ -50,6 +54,20 @@ fun Route.notificationRoute(services: ServiceRegistry) {
 
         val req = call.receive<SendNotificationRequest>()
         val deliveries = services.notificationService.dispatch(Notification(req.title, req.body))
+        log.info(
+            LogEvents.NOTIFICATION_TEST_SENT,
+            "Test notification sent",
+            "channelsNotified" to deliveries.count { it.success },
+            "channelsFailed" to deliveries.count { !it.success },
+        )
+        deliveries.filterNot { it.success }.forEach {
+            log.warn(
+                LogEvents.NOTIFICATION_DELIVERY_FAILED,
+                "Test notification via ${it.channel} failed",
+                "channel" to it.channel,
+                "error" to it.error,
+            )
+        }
         call.respond(SendNotificationResponse(deliveries))
     }
 }

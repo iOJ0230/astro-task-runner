@@ -1,0 +1,20 @@
+<configuration>
+    <!--
+      One JSON object per line on stdout, which Cloud Run ships to Cloud
+      Logging as structured jsonPayload with a real severity. See
+      CloudLoggingJsonLayout and docs/RUNBOOKS.md "Find and trace logs".
+      Tests use src/test/resources/logback-test.xml (plain text) instead.
+    -->
+    <appender name="JSON_STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+            <layout class="com.github.ioj0230.astro.infra.logging.CloudLoggingJsonLayout"/>
+        </encoder>
+    </appender>
+
+    <logger name="io.netty" level="WARN"/>
+    <logger name="io.grpc" level="WARN"/>
+
+    <root level="INFO">
+        <appender-ref ref="JSON_STDOUT"/>
+    </root>
+</configuration>

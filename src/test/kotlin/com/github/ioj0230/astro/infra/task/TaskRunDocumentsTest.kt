@@ -24,6 +24,7 @@ class TaskRunDocumentsTest {
             error = "All calendar sources failed",
             outputJson = null,
             deliveries = listOf(NotificationDelivery("email", false, "auth failed")),
+            requestId = "105445aa7843bc8bf206b12000100000",
         )
 
     @Test

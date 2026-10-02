@@ -340,10 +340,29 @@ gcloud firestore fields ttls update expireAt \
 Without it, runs are kept forever. At one run per task per day that's
 small, but it never stops growing.
 
-Every run also writes one log line (`INFO` on success, `WARN` with the
-error on failure, plus a `WARN` per failed channel). In the console:
-Cloud Run → astro-task-runner → Logs, or Logs Explorer with
-`resource.type="cloud_run_revision" textPayload:"Task "`.
+Every run also writes one structured log line (`event:
+task.run.finished`, with `taskId`, `runId`, `status`, `error`), plus one
+per failed channel. See `docs/RUNBOOKS.md` runbook 10 for queries.
+
+## 11. Structured logs and tracing
+
+The app writes one JSON object per log line
+(`src/main/resources/logback.xml` → `CloudLoggingJsonLayout`). Cloud
+Logging turns these into searchable `jsonPayload` fields with a real
+severity. No setup is needed for that.
+
+One optional step links the app's log lines to Cloud Run's own request
+log entries, so they show up grouped under each request:
+
+```bash
+gcloud run services update astro-task-runner --region=YOUR_REGION \
+  --update-env-vars=GOOGLE_CLOUD_PROJECT=YOUR_PROJECT_ID
+```
+
+Cloud Run doesn't set this variable by itself. Without it, everything
+else still works; lines just aren't grouped under the request. Locally,
+logs are the same JSON on stdout. Tests use plain text
+(`src/test/resources/logback-test.xml`) for readability.
 
 ## Troubleshooting
 

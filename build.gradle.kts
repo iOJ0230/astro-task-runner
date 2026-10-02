@@ -34,6 +34,7 @@ dependencies {
 
     // Logging
     implementation("io.ktor:ktor-server-call-logging-jvm:2.3.11")
+    implementation("io.ktor:ktor-server-call-id-jvm:2.3.11")
     implementation("ch.qos.logback:logback-classic:1.5.6")
 
     // Status pages (optional, for later)
