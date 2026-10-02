@@ -12,8 +12,8 @@ import java.time.ZoneId
  * Placeholder [AstroMathService] — fixed dark-window hours and a
  * day-of-month moon-phase guess, not real solar/lunar position math.
  * Described as "dummy" everywhere on purpose; do not present this as
- * working astronomy. See CLAUDE.md "Known gaps" #6 and roadmap item 3
- * for what a real implementation needs (astronomical twilight, moon
+ * working astronomy. See docs/ROADMAP.md (Phase 5, "Known gaps") for
+ * what a real implementation needs (astronomical twilight, moon
  * illumination %, Bortle-scale context).
  */
 class DummyAstroMathService : AstroMathService {

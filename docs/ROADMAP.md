@@ -1,8 +1,8 @@
 # Roadmap: sky calendar + notifications
 
-This is the plan of record for where the project is going and why. Use it
-alongside `CLAUDE.md`, which covers current state, and `docs/ARCHITECTURE.md`,
-which covers how the code fits together. When a phase ships, mark it done
+This is the plan of record for where the project is going and why, and
+the list of known gaps in what exists today. Use it alongside
+`docs/ARCHITECTURE.md`, which covers how the code fits together. When a phase ships, mark it done
 here and log it in `CHANGELOG.md`.
 
 ## The goal in one paragraph
@@ -103,8 +103,7 @@ account for the owning project is disabled in state closed").
   or similar). Record the IMO calendar edition in `source`.
 - Use it in both `AstroCalendarProvider` (calendar events) and
   `AstroEventService` (the existing meteor-alert endpoint), then delete
-  the hardcoded Perseids/Geminids. This is the old `CLAUDE.md` roadmap
-  item 2.
+  the hardcoded Perseids/Geminids.
 
 ### Phase 4: planets, close approaches, "well placed"
 
@@ -120,14 +119,20 @@ account for the owning project is disabled in state closed").
 
 ### Phase 5: real dark window
 
-The original `CLAUDE.md` roadmap item 1: astronomical twilight and moon
-illumination instead of the fixed 20:00–03:00 window. Phases 2 and 4
-build most of the ingredients.
+Real sunset/sunrise, astronomical twilight and moon illumination instead
+of the fixed 20:00–03:00 window. Phases 2 and 4 build most of the
+ingredients. Model it around what a photographer needs to decide *when to
+shoot* (Bortle-scale light pollution, moon illumination %, not just "is
+the sun down"). *Capturing the Universe* (Woodhouse) and *The Beginner's
+Guide to Astrophotography* (Shaw) are good references before
+over-engineering the math.
 
-### Later (unchanged from before)
+### Later
 
-- One generic `POST /api/tasks` with `type` in the body. There are now
-  three per-type creation routes, which makes this more pressing.
+- One generic `POST /api/tasks` with `type` in the body.
+  `TaskRunner.createTask` is already generic, but there are three
+  per-type creation routes: shallow wrappers around one operation, the
+  duplication *A Philosophy of Software Design* warns about.
 - `/api/v1/` prefix before any external consumer.
 - OIDC auth for `tick` instead of the shared secret.
 
@@ -190,14 +195,41 @@ already cover what those would.
    (see `HttpNotifiersTest`), including a failing case. Tests must never
    call the real API.
 
-## Known limitation to fix soon
+## Known gaps
 
-`DARK_WINDOW` and `METEOR_ALERT` task payloads store a fixed `dateIso`.
-A DAILY task therefore reports the **same date every day**: the date it
-was created with. `ASTRO_CALENDAR` avoids this by leaving `startDateIso`
-null, which means "today, resolved when the task runs". Apply the same
-pattern (`dateIso: String? = null` → today in `timeZoneId`) to the other
-two task types before relying on them for daily notifications.
+What's wrong or missing **today**, as opposed to the phases above, which
+are planned work. When a gap is fixed, delete it here and record the fix
+in `CHANGELOG.md`.
+
+1. **All astronomy is placeholder.** `DummyAstroMathService` assumes a
+   fixed 20:00–03:00 dark window and derives "moon phase" from the day of
+   the month. `DummyAstroEventProvider` knows only Perseids and Geminids.
+   `DummyAstroCalendarProvider` holds October 2026 only, copied from a
+   society poster and unverified. Never describe these as working
+   astronomy without the "dummy" caveat. Phases 2–5 replace them.
+2. **DAILY dark-window and meteor-alert tasks repeat the same date.**
+   Their payloads store a fixed `dateIso`, so every daily run reports the
+   creation date. `ASTRO_CALENDAR` avoids this by leaving `startDateIso`
+   null ("today, resolved when the task runs"). Apply the same pattern
+   (`dateIso: String? = null` → today in `timeZoneId`) to the other two
+   before relying on them for daily notifications.
+3. **The GCP billing account is closed.** CD has failed at the Cloud
+   Build step since 2026-09-20, so `main` isn't deployed. Ops fix:
+   `docs/RUNBOOKS.md` runbook 1.
+4. **Three task-creation routes for one operation**
+   (`/api/tasks/dark-window`, `/meteor-alert`, `/astro-calendar`). See
+   "Later" above.
+5. **No API versioning, and two route-naming schemes**
+   (`/api/run/astro/*` vs `/api/tasks/*`). Not urgent with no external
+   consumers, but don't add a third. See `docs/CONVENTIONS.md`.
+6. **`FirestoreTaskRunRepository`'s query isn't tested.** The field
+   mapping and the behavior (via `InMemoryTaskRunRepository`) are, but
+   the `orderBy`/`limit` query only runs against real Firestore. A
+   Firestore emulator in CI would close this.
+7. **Error handling is deliberately narrow.** `StatusPages` maps the
+   exceptions this code actually throws to 4xx; anything else is a
+   generic, non-leaky 500. That's the right default, not exhaustive input
+   validation.
 
 ## Do we need to pay?
 

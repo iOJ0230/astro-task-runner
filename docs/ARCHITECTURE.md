@@ -5,7 +5,7 @@ split (`api` / `core` / `infra`) and no framework-level dependency
 injection — dependencies are built once in `Application.kt` and passed
 around as a plain `ServiceRegistry`. This doc covers layering, the request
 lifecycle, the task data model, and how it's deployed. For known problems
-and a prioritized fix list, see `CLAUDE.md`. For naming/style rules and
+and planned work, see `ROADMAP.md`. For naming/style rules and
 where the code currently deviates from them, see `CONVENTIONS.md`.
 
 ## Layers
@@ -53,7 +53,7 @@ what lets `TaskRunnerSchedulingTest` swap in `InMemoryTaskRepository` and
 stub services without touching Ktor at all. Route-level integration tests
 respect the same boundary via `Application.testModule()` — `module()` with
 `InMemoryTaskRepository` injected instead of Firestore — rather than
-calling `module()` directly. See `CLAUDE.md` → "Resolved" #1.
+calling `module()` directly. See `CONVENTIONS.md` → "Testing".
 
 ```mermaid
 flowchart LR
@@ -223,7 +223,7 @@ task where `isDue(task, now)` is true (see the state diagram below). It's
 the endpoint an external scheduler (Cloud Scheduler, cron) is meant to
 hit periodically. It checks a shared secret (`X-Tick-Secret` header against
 the `TASK_RUNNER_TICK_SECRET` env var) when that env var is set — see
-`CLAUDE.md` → "Resolved" #6 and `docs/SETUP.md` for wiring it up with Cloud
+`docs/SETUP.md` § 8 for wiring it up with Cloud
 Scheduler.
 
 ## Task lifecycle
@@ -391,7 +391,7 @@ flowchart LR
 - **CI** (`ci.yml`): on every push/PR to `main`, runs `ktlintCheck` then
   `test`. No GCP credentials are configured here — that's fine now that
   tests run against `testModule()` / `InMemoryTaskRepository` instead of
-  real Firestore (`CLAUDE.md` → "Resolved" #1). If a new test needs real
+  real Firestore. If a new test needs real
   Firestore behavior, it needs its own emulator setup in `ci.yml`, not a
   call to `module()`.
 - **CD** (`cd.yml`): on push to `main`, lints + tests again, authenticates

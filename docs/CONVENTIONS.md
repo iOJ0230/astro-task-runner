@@ -4,7 +4,8 @@ Rules for this codebase, and — deliberately — a record of where the
 current code doesn't follow them yet. Documenting only the aspirational
 state and hiding the gap makes the docs actively misleading the first time
 someone (or some Claude session) reads a file that doesn't match. Where a
-rule is violated today, it says so and points at the fix in `CLAUDE.md`.
+rule is violated today, it says so and points at the fix in
+`docs/ROADMAP.md` → "Known gaps".
 
 ## Package layout
 
@@ -49,7 +50,7 @@ message creates a notification).
 Also note: `POST /api/tasks/dark-window` and `POST
 /api/tasks/meteor-alert` are two routes doing the same thing
 (`TaskRunner.createTask` is already fully generic over `TaskType`). See
-`CLAUDE.md` roadmap item 3 — collapsing these to one `POST /api/tasks`
+`docs/ROADMAP.md` → "Later": collapsing these to one `POST /api/tasks`
 with `type` in the body is the more RESTful shape *and* removes
 duplicated route code, which is the rare refactor that's a strict
 improvement on both axes.
@@ -212,6 +213,25 @@ own mapping, add it next to the existing `exception<...>` blocks in
   (covering `MANUAL` vs `DAILY` scheduling) had never run until this was
   caught. If a test file isn't showing up in `build/test-results/test/`
   after `./gradlew test`, check the `@Test` import first.
+
+## Adding a new task type
+
+1. Add the value to `TaskType` (`core/task/TaskType.kt`).
+2. Add domain request/response models under `core/<domain>/` if new, with
+   `@Serializable`.
+3. Add an `execute<Type>(...)` branch to `TaskRunner.execute`'s `when`.
+   It returns the output JSON and a `Notification` built by a new
+   function in `core/task/TaskNotifications.kt`. Don't add try/catch:
+   the shared path in `runTask` records failures. If the payload has a
+   date, make it nullable and resolve it to "today" at run time.
+4. Add a `Create<Type>TaskRequest` under `api/task/model/`, including
+   `notify: NotifyPolicy = NotifyPolicy.NEVER`.
+5. Add a route function under `api/task/` following the existing
+   `darkWindowTaskRoute` / `meteorAlertTaskRoute` shape, and register it
+   in `Application.module()`.
+6. Add integration tests mirroring `DarkWindowTaskRouteTest`, using
+   `testModule()` and `kotlin.test.Test`.
+7. Log the change in `CHANGELOG.md` under `Unreleased`.
 
 ## Commit messages
 

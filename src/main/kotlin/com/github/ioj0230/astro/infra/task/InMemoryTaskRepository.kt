@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentHashMap
  * `Application.testModule`) can exercise [TaskRunner][com.github.ioj0230.astro.core.task.TaskRunner]
  * and the route layer without live GCP credentials. Keep both this class
  * and its test-only usage — it is deliberately dead in prod, not
- * leftover. See CLAUDE.md "Known gaps" #1 and #4.
+ * leftover. See docs/CONVENTIONS.md → "Testing".
  */
 class InMemoryTaskRepository : TaskRepository {
     private val storage = ConcurrentHashMap<String, Task>()

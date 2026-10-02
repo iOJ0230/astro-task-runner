@@ -11,7 +11,7 @@ import io.ktor.server.application.Application
  * `testApplication { application { ... } }` integration test should call
  * this instead of `module()` directly — `module()` with no override reaches
  * for real GCP credentials via `FirestoreOptions.getDefaultInstance()`,
- * which CI does not provide. See CLAUDE.md "Resolved" #1.
+ * which CI does not provide. See docs/CONVENTIONS.md → "Testing".
  *
  * Notifications default to none, so a developer's own channel env vars
  * never receive test traffic; pass fakes to assert on deliveries.

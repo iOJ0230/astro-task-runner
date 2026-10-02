@@ -12,8 +12,8 @@ import java.time.ZoneId
 
 /**
  * Placeholder [AstroEventService] — hardcodes exactly two showers
- * (Perseids, Geminids) rather than a real almanac. See CLAUDE.md
- * "Known gaps" #6 and roadmap item 4.
+ * (Perseids, Geminids) rather than a real almanac. See docs/ROADMAP.md
+ * Phase 3 for the replacement.
  */
 class DummyAstroEventProvider : AstroEventService {
     override fun upcomingMeteorShowers(request: MeteorAlertRequest): MeteorAlertResponse {

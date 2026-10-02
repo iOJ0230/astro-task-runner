@@ -112,8 +112,7 @@ The project is structured to support clean architecture:
 
 ## Documentation
 
-- [`CLAUDE.md`](CLAUDE.md) — orientation for continuing this project (quick
-  start, known gaps, roadmap)
+- [`CLAUDE.md`](CLAUDE.md) — standing rules and gotchas for working in this repo
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — layers, request flow,
   task lifecycle, and deployment diagrams
 - [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md) — naming, error-handling,

@@ -11,8 +11,8 @@ import io.ktor.server.response.respond
  * The header + env var pair gating endpoints that trigger side effects
  * (`POST /api/tasks/tick`, `POST /api/notifications`). Callers must send
  * `X-Tick-Secret: <TASK_RUNNER_TICK_SECRET>`. If the env var isn't set
- * (local dev, tests), the check is skipped — see CLAUDE.md "Resolved" #6
- * for why this is a minimal shared-secret check rather than full auth.
+ * (local dev, tests), the check is skipped. It's a minimal shared-secret
+ * check rather than full auth; docs/ROADMAP.md ("Later") plans OIDC.
  */
 private const val SHARED_SECRET_HEADER = "X-Tick-Secret"
 private const val SHARED_SECRET_ENV_VAR = "TASK_RUNNER_TICK_SECRET"

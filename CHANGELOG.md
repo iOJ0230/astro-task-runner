@@ -74,8 +74,19 @@ don't wait until a "release" to write it down.
   email, a private test server for Discord, and a test bot for Telegram.
   New `SMTP_STARTTLS=false` for local mail catchers, refused for any
   non-local host so the SMTP password never goes out unencrypted.
+- `docs/SETUP.md`: reconstructed GCP project / Firestore / CD-secrets
+  setup guide (see that file's own note on provenance — it's derived from
+  what the code and CI/CD workflows require, not a transcript of the
+  original setup).
 
 ### Changed
+- **`CLAUDE.md` cut from 267 to 88 lines.** It's loaded into every
+  Claude session, so it now holds only rules, gotchas, commands, and a map
+  of where things live. Its "Resolved" history (already in this file) was
+  removed. Its roadmap moved into `docs/ROADMAP.md`, along with the known
+  gaps (now `docs/ROADMAP.md` → "Known gaps"). The task-type checklist
+  moved to `docs/CONVENTIONS.md`. Code comments and docs that pointed at
+  the old sections now point at the new homes.
 - `TaskRunner.runTask`/`runAllEnabled` are now `suspend`, because
   notification sending is async.
 - The tick shared-secret check moved from `TaskRoute.kt` to
@@ -83,8 +94,28 @@ don't wait until a "release" to write it down.
 - `Application.module()` takes `notifiersOverride`, and `testModule()`
   passes an empty list by default, so tests never message real channels.
 - `.env` files are gitignored.
+- Restored the executable bit on `gradlew` (it was checked in as a plain
+  `644` file, so a fresh non-CI checkout needed a manual `chmod +x
+  gradlew` before `./gradlew` would run at all; `ci.yml`/`cd.yml` paper
+  over this with an explicit `chmod` step, which is why it went unnoticed).
+- Removed the dead, unused local `CreateDarkWindowTaskRequest` from
+  `TaskRoute.kt` (it shadowed the real one in `api/task/model/` and was
+  never referenced).
+- Moved `TaskListResponse`, `TaskRunResponse`, `TaskTickResponse` out of
+  `TaskRoute.kt` into `api/task/model/TaskResponses.kt`, alongside the
+  `Create*TaskRequest` DTOs they pair with.
+- Deleted the test-only `TaskRunApiResponse` mirror class; tests now
+  decode the real `api/task/model/TaskRunResponse` directly.
+- Added KDoc to `InMemoryTaskRepository`, `DummyAstroMathService`, and
+  `DummyAstroEventProvider` stating explicitly what each is for (and, for
+  the two `Dummy*` classes, that they are not real astronomy).
 
 ### Fixed
+- **This changelog had edits in an already-released section.** Root
+  cause: a docs script replaced *every* `### Fixed` heading instead of
+  only the `Unreleased` one, so the logging and billing entries were also
+  copied into the 2026-01-05 section. That section is restored to exactly
+  its released text, and `Unreleased` has one heading of each kind again.
 - **Error alerts could never fire.** Root cause: there was no
   `logback.xml`, so logs went to stdout as plain text. Cloud Logging
   assigns no severity to plain-text lines, so runbook 9's
@@ -138,29 +169,6 @@ don't wait until a "release" to write it down.
   401ing on a mismatch. No env var set → unchanged, unauthenticated
   behavior (local dev, tests).
 
-### Changed
-- Restored the executable bit on `gradlew` (it was checked in as a plain
-  `644` file, so a fresh non-CI checkout needed a manual `chmod +x
-  gradlew` before `./gradlew` would run at all; `ci.yml`/`cd.yml` paper
-  over this with an explicit `chmod` step, which is why it went unnoticed).
-- Removed the dead, unused local `CreateDarkWindowTaskRequest` from
-  `TaskRoute.kt` (it shadowed the real one in `api/task/model/` and was
-  never referenced).
-- Moved `TaskListResponse`, `TaskRunResponse`, `TaskTickResponse` out of
-  `TaskRoute.kt` into `api/task/model/TaskResponses.kt`, alongside the
-  `Create*TaskRequest` DTOs they pair with.
-- Deleted the test-only `TaskRunApiResponse` mirror class; tests now
-  decode the real `api/task/model/TaskRunResponse` directly.
-- Added KDoc to `InMemoryTaskRepository`, `DummyAstroMathService`, and
-  `DummyAstroEventProvider` stating explicitly what each is for (and, for
-  the two `Dummy*` classes, that they are not real astronomy).
-
-### Added
-- `docs/SETUP.md`: reconstructed GCP project / Firestore / CD-secrets
-  setup guide (see that file's own note on provenance — it's derived from
-  what the code and CI/CD workflows require, not a transcript of the
-  original setup).
-
 ### Verified
 - `./gradlew ktlintCheck test` and `./gradlew clean build shadowJar` both
   pass locally in a sandbox with **no GCP credentials at all** — the
@@ -181,20 +189,6 @@ section prompted.
   string field) instead of only in memory.
 
 ### Fixed
-- **Error alerts could never fire.** Root cause: there was no
-  `logback.xml`, so logs went to stdout as plain text. Cloud Logging
-  assigns no severity to plain-text lines, so runbook 9's
-  `severity>=ERROR` alert matched nothing. Logs are now JSON with an
-  explicit `severity`.
-- **A startup crash produced a raw, multi-line stack trace** that Cloud
-  Logging splits into many entries. `main()` now logs uncaught
-  exceptions as one `app.crashed` JSON entry.
-- Ktor's request log lines contained ANSI color codes, which would show
-  up as escape sequences in Cloud Logging. Colors are disabled.
-- **Documented why CD has been red since 2026-09-20.** The GCP billing
-  account is closed (Cloud Build: "disabled in state closed"). This is an
-  ops fix, recorded in `CLAUDE.md`, `docs/SETUP.md` and runbook 1. No
-  code change.
 - Several iterations on the Cloud Run CD workflow: explicit `gcloud`
   credential handling, avoided a `cloudresourcemanager` dependency in the
   CD sanity check, and disabled Cloud Build log streaming after it caused
