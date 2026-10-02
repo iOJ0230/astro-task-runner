@@ -90,8 +90,7 @@ data class ServiceRegistry(
  * @param taskRepositoryOverride Injection point used by tests to avoid
  * touching real Firestore (which needs live GCP credentials). Production
  * (`main()`) always leaves this null and gets a Firestore-backed
- * repository. See `testModule()` (test sourceSet) and CLAUDE.md
- * "Resolved" #1.
+ * repository. See `testModule()` (test sourceSet).
  * @param taskRunRepositoryOverride Same, for run history.
  * @param notifiersOverride Same idea for notifications: tests pass an
  * explicit list (usually empty or fakes) so a developer's own

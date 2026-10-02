@@ -149,7 +149,7 @@ Once set, `cd.yml` runs automatically on every push to `main`.
 ## 6. Local development
 
 `./gradlew run` builds a real `FirestoreTaskRepository` at startup (see
-`CLAUDE.md`'s "Gotcha"), so it needs Application Default Credentials
+`CLAUDE.md` → "Gotchas"), so it needs Application Default Credentials
 locally:
 
 ```bash
@@ -185,7 +185,7 @@ two independent copies of the same deploy steps, not shared code.
 ## 8. Securing `POST /api/tasks/tick`
 
 New in this pass: setting `TASK_RUNNER_TICK_SECRET` makes `/api/tasks/tick`
-require a matching `X-Tick-Secret` header (see `CLAUDE.md` → "Resolved" #6).
+require a matching `X-Tick-Secret` header.
 To turn it on:
 
 ```bash
