@@ -8,6 +8,31 @@ don't wait until a "release" to write it down.
 
 ## Unreleased
 
+### Added
+- **Notification core.** New `core/notify` (`Notifier`,
+  `NotificationService`). Channels are isolated: one failing channel
+  doesn't affect the others or the task. The channel implementations
+  (Discord, Telegram, email) follow in their own changes.
+- **`notify` policy on tasks**: `NEVER` (default, so existing Firestore
+  documents are unchanged), `ON_FAILURE`, or `ALWAYS`. Run and tick
+  responses include a per-channel `deliveries` list, and failed
+  deliveries are logged as warnings.
+- **`POST /api/notifications`** sends a test message to all channels.
+  It is gated by the same `X-Tick-Secret` check as `tick`, and returns
+  `409` when no channel is configured.
+- `docs/SETUP.md`: a "Where secrets go" table (GitHub vs Secret Manager
+  vs env vars), and § 9, notification setup and the notify policy.
+- Tests for routing and the notify policy, using fake channels.
+
+### Changed
+- `TaskRunner.runTask`/`runAllEnabled` are now `suspend`, because
+  notification sending is async.
+- The tick shared-secret check moved from `TaskRoute.kt` to
+  `api/SharedSecret.kt` so `POST /api/notifications` can reuse it.
+- `Application.module()` takes `notifiersOverride`, and `testModule()`
+  passes an empty list by default, so tests never message real channels.
+- `.env` files are gitignored.
+
 ### Fixed
 - **One failing task aborted the rest of `tick`.** Root cause: the
   dark-window run path had no try/catch, unlike meteor-alert, so any

@@ -8,6 +8,7 @@ import com.github.ioj0230.astro.core.meteor.MeteorAlertRequest
 import com.github.ioj0230.astro.core.meteor.MeteorAlertResponse
 import com.github.ioj0230.astro.core.sky.SkySummaryService
 import com.github.ioj0230.astro.infra.task.InMemoryTaskRepository
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import java.time.Clock
 import java.time.Instant
@@ -63,83 +64,85 @@ class TaskRunnerSchedulingTest {
         )
 
     @Test
-    fun `should not run MANUAL tasks`() {
-        val clock =
-            Clock.fixed(
-                Instant.parse("2025-08-12T10:00:00Z"),
-                ZoneOffset.UTC,
-            )
+    fun `should not run MANUAL tasks`() =
+        runBlocking {
+            val clock =
+                Clock.fixed(
+                    Instant.parse("2025-08-12T10:00:00Z"),
+                    ZoneOffset.UTC,
+                )
 
-        val repo = InMemoryTaskRepository()
-        val runner =
-            TaskRunner(
-                taskRepository = repo,
-                astroMathService = stubAstroMathService,
-                astroEventService = stubAstroEventService,
-                skySummaryService = stubSkySummaryService,
-                json = json,
-                clock = clock,
-            )
+            val repo = InMemoryTaskRepository()
+            val runner =
+                TaskRunner(
+                    taskRepository = repo,
+                    astroMathService = stubAstroMathService,
+                    astroEventService = stubAstroEventService,
+                    skySummaryService = stubSkySummaryService,
+                    json = json,
+                    clock = clock,
+                )
 
-        val manualTask =
-            runner.createDarkWindowTask(
-                name = "Manual dark window",
-                request = sampleDarkWindowRequest(),
-                frequency = TaskFrequency.MANUAL,
-                preferredHourUtc = null,
-            )
+            val manualTask =
+                runner.createDarkWindowTask(
+                    name = "Manual dark window",
+                    request = sampleDarkWindowRequest(),
+                    frequency = TaskFrequency.MANUAL,
+                    preferredHourUtc = null,
+                )
 
-        val results = runner.runAllEnabled()
+            val results = runner.runAllEnabled()
 
-        assertTrue(results.isEmpty(), "MANUAL tasks should not be run by tick")
+            assertTrue(results.isEmpty(), "MANUAL tasks should not be run by tick")
 
-        val stored = repo.findById(manualTask.id)!!
-        assertEquals(TaskStatus.NEVER_RUN, stored.lastStatus)
-        assertEquals(null, stored.lastRunAtIso)
-    }
+            val stored = repo.findById(manualTask.id)!!
+            assertEquals(TaskStatus.NEVER_RUN, stored.lastStatus)
+            assertEquals(null, stored.lastRunAtIso)
+        }
 
     @Test
-    fun `should run DAILY tasks once per day after preferred hour`() {
-        val clock =
-            Clock.fixed(
-                // 10:00 UTC
-                Instant.parse("2025-08-12T10:00:00Z"),
-                ZoneOffset.UTC,
+    fun `should run DAILY tasks once per day after preferred hour`() =
+        runBlocking {
+            val clock =
+                Clock.fixed(
+                    // 10:00 UTC
+                    Instant.parse("2025-08-12T10:00:00Z"),
+                    ZoneOffset.UTC,
+                )
+
+            val repo = InMemoryTaskRepository()
+            val runner =
+                TaskRunner(
+                    taskRepository = repo,
+                    astroMathService = stubAstroMathService,
+                    astroEventService = stubAstroEventService,
+                    skySummaryService = stubSkySummaryService,
+                    json = json,
+                    clock = clock,
+                )
+
+            val dailyTask =
+                runner.createDarkWindowTask(
+                    name = "Daily dark window",
+                    request = sampleDarkWindowRequest(),
+                    frequency = TaskFrequency.DAILY,
+                    preferredHourUtc = 8,
+                )
+
+            val firstResults = runner.runAllEnabled()
+            assertEquals(1, firstResults.size, "First tick should run DAILY task")
+
+            val updated = repo.findById(dailyTask.id)!!
+            assertEquals(TaskStatus.SUCCESS, updated.lastStatus)
+            assertTrue(updated.lastRunAtIso != null)
+
+            // Tick again at same clock time -> should not run again
+            val secondResults = runner.runAllEnabled()
+            assertTrue(
+                secondResults.isEmpty(),
+                "Second tick same day should not re-run DAILY task",
             )
-
-        val repo = InMemoryTaskRepository()
-        val runner =
-            TaskRunner(
-                taskRepository = repo,
-                astroMathService = stubAstroMathService,
-                astroEventService = stubAstroEventService,
-                skySummaryService = stubSkySummaryService,
-                json = json,
-                clock = clock,
-            )
-
-        val dailyTask =
-            runner.createDarkWindowTask(
-                name = "Daily dark window",
-                request = sampleDarkWindowRequest(),
-                frequency = TaskFrequency.DAILY,
-                preferredHourUtc = 8,
-            )
-
-        val firstResults = runner.runAllEnabled()
-        assertEquals(1, firstResults.size, "First tick should run DAILY task")
-
-        val updated = repo.findById(dailyTask.id)!!
-        assertEquals(TaskStatus.SUCCESS, updated.lastStatus)
-        assertTrue(updated.lastRunAtIso != null)
-
-        // Tick again at same clock time -> should not run again
-        val secondResults = runner.runAllEnabled()
-        assertTrue(
-            secondResults.isEmpty(),
-            "Second tick same day should not re-run DAILY task",
-        )
-    }
+        }
 
     private fun sampleDarkWindowRequest(): DarkWindowRequest =
         DarkWindowRequest(

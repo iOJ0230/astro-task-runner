@@ -23,6 +23,7 @@ fun Route.darkWindowTaskRoute(services: ServiceRegistry) {
                 frequency = req.frequency,
                 preferredHourUtc = req.preferredHourUtc,
                 enabled = req.enabled,
+                notify = req.notify,
             )
 
         call.respond(created)
