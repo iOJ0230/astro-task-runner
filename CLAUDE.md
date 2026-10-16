@@ -142,6 +142,12 @@ everything else would have made that change hard to review.
    the check is skipped, so this is backward compatible until you opt in.
    See `docs/SETUP.md` for configuring this on Cloud Run + Cloud
    Scheduler.
+7. **One failing task no longer aborts `tick`.** `runDarkWindowTask` had
+   no try/catch, so a bad payload (e.g. an unparseable `dateIso`) threw
+   out of `runAllEnabled()` and every task after it in that tick was
+   skipped. `TaskRunner.runTask` now has a single success/failure path for
+   all task types: failures are stored as `FAILED` and never escape.
+   Covered by `TaskRunnerFailureTest`.
 
 ## Roadmap (rough priority order)
 
@@ -174,7 +180,9 @@ everything else would have made that change hard to review.
 1. Add the value to `TaskType` (`core/task/TaskType.kt`).
 2. Add domain request/response models under `core/<domain>/` if new, with
    `@Serializable`.
-3. Add a `run<Type>Task(...)` branch to `TaskRunner.runTask`'s `when`.
+3. Add an `execute<Type>(...)` branch to `TaskRunner.execute`'s `when`.
+   Don't add try/catch: the shared path in `runTask` records failures
+   (see "Resolved" #7).
 4. Add a `Create<Type>TaskRequest` under `api/task/model/`.
 5. Add a route function under `api/task/` following the existing
    `darkWindowTaskRoute` / `meteorAlertTaskRoute` shape, and register it in
