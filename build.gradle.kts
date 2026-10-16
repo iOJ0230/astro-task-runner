@@ -39,7 +39,7 @@ dependencies {
     // Status pages (optional, for later)
     implementation("io.ktor:ktor-server-status-pages-jvm:2.3.11")
 
-    // HttpClient (for future astro integrations)
+    // HttpClient (Discord/Telegram notifications, future astro integrations)
     implementation("io.ktor:ktor-client-core-jvm:2.3.11")
     implementation("io.ktor:ktor-client-cio-jvm:2.3.11")
     implementation("io.ktor:ktor-client-content-negotiation-jvm:2.3.11")
@@ -48,6 +48,7 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation("io.ktor:ktor-server-tests-jvm:2.3.11")
     testImplementation("io.ktor:ktor-client-content-negotiation-jvm:2.3.11")
+    testImplementation("io.ktor:ktor-client-mock-jvm:2.3.11")
 
     // Firestore
     implementation("com.google.cloud:google-cloud-firestore:3.24.3")

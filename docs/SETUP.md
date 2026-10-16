@@ -219,14 +219,20 @@ are set, the channel is skipped. The startup log
 line `Notification channels enabled: [...]` shows which channels are
 live.
 
-Channels are added in follow-up changes; each adds its row here.
+| Channel | Variables |
+|---|---|
+| Discord | `DISCORD_WEBHOOK_URL` |
+
+**Discord:** open the Discord server you want alerts in, go to Server
+Settings → Integrations → Webhooks → New Webhook, pick the channel, and
+use **Copy Webhook URL**. That URL is the whole credential.
 
 **On Cloud Run, store the secrets in Secret Manager** (see "Where secrets
 go" at the top):
 
 ```bash
 gcloud services enable secretmanager.googleapis.com
-printf '%s' 'THE_SECRET_VALUE' | gcloud secrets create SECRET_NAME --data-file=-
+printf '%s' 'https://discord.com/api/webhooks/...' | gcloud secrets create discord-webhook-url --data-file=-
 
 PROJECT_NUMBER=$(gcloud projects describe YOUR_PROJECT_ID --format='value(projectNumber)')
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
@@ -234,7 +240,7 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --role="roles/secretmanager.secretAccessor"
 
 gcloud run services update astro-task-runner --region=YOUR_REGION \
-  --set-secrets="ENV_VAR_NAME=SECRET_NAME:latest"
+  --set-secrets="DISCORD_WEBHOOK_URL=discord-webhook-url:latest"
 ```
 
 `cd.yml`'s `gcloud run deploy --image ...` keeps env vars and secrets
@@ -242,7 +248,7 @@ already set on the service, so this is a one-time step, not something CD
 has to know about. Secrets are read when an instance starts, so after
 adding a new secret version, roll a new revision to pick it up, e.g.
 `gcloud run services update astro-task-runner --region=YOUR_REGION
---update-secrets=ENV_VAR_NAME=SECRET_NAME:latest`.
+--update-secrets=DISCORD_WEBHOOK_URL=discord-webhook-url:latest`.
 
 **Local dev:** put the same variables in a `.env` file (gitignored) and
 `set -a; source .env; set +a` before `./gradlew run`.

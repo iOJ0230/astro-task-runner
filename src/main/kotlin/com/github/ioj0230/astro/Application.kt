@@ -18,12 +18,17 @@ import com.github.ioj0230.astro.core.task.TaskRepository
 import com.github.ioj0230.astro.core.task.TaskRunner
 import com.github.ioj0230.astro.infra.math.DummyAstroMathService
 import com.github.ioj0230.astro.infra.meteor.DummyAstroEventProvider
+import com.github.ioj0230.astro.infra.notify.NotifierFactory
 import com.github.ioj0230.astro.infra.task.FirestoreTaskRepository
 import com.google.cloud.firestore.FirestoreOptions
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.JsonConvertException
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationStopped
 import io.ktor.server.application.call
 import io.ktor.server.application.install
 import io.ktor.server.application.log
@@ -63,7 +68,7 @@ data class ServiceRegistry(
  * @param notifiersOverride Same idea for notifications: tests pass an
  * explicit list (usually empty or fakes) so a developer's own
  * DISCORD_WEBHOOK_URL etc. never gets messaged by a test run. Null →
- * no channels yet; the channel implementations land in follow-up changes.
+ * channels come from environment variables via [NotifierFactory].
  */
 fun Application.module(
     taskRepositoryOverride: TaskRepository? = null,
@@ -79,7 +84,15 @@ fun Application.module(
     val astroEventService: AstroEventService = DummyAstroEventProvider()
     val skySummaryService = SkySummaryService(astroMathService, astroEventService)
 
-    val notifiers = notifiersOverride ?: emptyList()
+    val notifiers =
+        notifiersOverride ?: run {
+            val httpClient =
+                HttpClient(CIO) {
+                    install(HttpTimeout) { requestTimeoutMillis = 10_000 }
+                }
+            environment.monitor.subscribe(ApplicationStopped) { httpClient.close() }
+            NotifierFactory.fromEnvironment(System.getenv(), httpClient)
+        }
     val notificationService = NotificationService(notifiers)
     log.info("Notification channels enabled: ${notificationService.channels.ifEmpty { listOf("none") }}")
 
