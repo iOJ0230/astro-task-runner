@@ -83,4 +83,45 @@ class HttpNotifiersTest {
 
             assertEquals("discord request failed (IOException)", error.message)
         }
+
+    @Test
+    fun `telegram posts chat id and text to sendMessage`() =
+        runBlocking {
+            val notifier = TelegramNotifier(clientResponding(HttpStatusCode.OK), botToken = "123:secret", chatId = "42")
+
+            notifier.send(Notification("New Moon", "Dark skies"))
+
+            val request = requests.single()
+            assertEquals("https://api.telegram.org/bot123:secret/sendMessage", request.url.toString())
+            val body = request.jsonBody()
+            assertEquals("42", body["chat_id"]!!.jsonPrimitive.content)
+            assertEquals("New Moon\n\nDark skies", body["text"]!!.jsonPrimitive.content)
+        }
+
+    @Test
+    fun `non-2xx responses throw without leaking the bot token`() =
+        runBlocking {
+            val notifier = TelegramNotifier(clientResponding(HttpStatusCode.Unauthorized), botToken = "123:secret", chatId = "42")
+
+            val error = assertFailsWith<NotifierException> { notifier.send(Notification("t", "b")) }
+
+            assertTrue(error.message!!.contains("401"))
+            assertFalse(error.message!!.contains("secret"))
+        }
+
+    @Test
+    fun `network errors throw without echoing the url`() =
+        runBlocking {
+            // Real connection errors often include the request URL; the
+            // token must not end up in a delivery error or the logs.
+            val failing =
+                HttpClient(
+                    MockEngine { request -> throw java.io.IOException("Connection refused: ${request.url}") },
+                )
+            val notifier = TelegramNotifier(failing, botToken = "123:secret", chatId = "42")
+
+            val error = assertFailsWith<NotifierException> { notifier.send(Notification("t", "b")) }
+
+            assertEquals("telegram request failed (IOException)", error.message)
+        }
 }

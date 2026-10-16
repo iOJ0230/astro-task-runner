@@ -215,17 +215,27 @@ publicly reachable service, or anyone with the URL can spam you.
 ## 9. Notification channels (Discord, Telegram, email)
 
 Each channel is turned on by setting its environment variables. If none
-are set, the channel is skipped. The startup log
+are set, the channel is skipped. If only some are set, **startup fails**
+with a message naming the missing variable. That's deliberate: a typo
+should break the deploy, not quietly stop your alerts. The startup log
 line `Notification channels enabled: [...]` shows which channels are
 live.
 
 | Channel | Variables |
 |---|---|
 | Discord | `DISCORD_WEBHOOK_URL` |
+| Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
 
 **Discord:** open the Discord server you want alerts in, go to Server
 Settings → Integrations → Webhooks → New Webhook, pick the channel, and
 use **Copy Webhook URL**. That URL is the whole credential.
+
+**Telegram:**
+1. Message `@BotFather`, send `/newbot`, and follow the prompts. It
+   replies with the bot token.
+2. Send any message to your new bot. The bot can't message you first.
+3. Open `https://api.telegram.org/bot<TOKEN>/getUpdates` in a browser.
+   Your chat id is `result[0].message.chat.id`.
 
 **On Cloud Run, store the secrets in Secret Manager** (see "Where secrets
 go" at the top):
@@ -233,6 +243,7 @@ go" at the top):
 ```bash
 gcloud services enable secretmanager.googleapis.com
 printf '%s' 'https://discord.com/api/webhooks/...' | gcloud secrets create discord-webhook-url --data-file=-
+printf '%s' '123456:ABC...' | gcloud secrets create telegram-bot-token --data-file=-
 
 PROJECT_NUMBER=$(gcloud projects describe YOUR_PROJECT_ID --format='value(projectNumber)')
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
@@ -240,7 +251,8 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --role="roles/secretmanager.secretAccessor"
 
 gcloud run services update astro-task-runner --region=YOUR_REGION \
-  --set-secrets="DISCORD_WEBHOOK_URL=discord-webhook-url:latest"
+  --set-secrets="DISCORD_WEBHOOK_URL=discord-webhook-url:latest,TELEGRAM_BOT_TOKEN=telegram-bot-token:latest" \
+  --update-env-vars="TELEGRAM_CHAT_ID=..."
 ```
 
 `cd.yml`'s `gcloud run deploy --image ...` keeps env vars and secrets
@@ -279,4 +291,6 @@ curl -X POST https://YOUR_CLOUD_RUN_URL/api/notifications \
 | `cd.yml` fails at "Build image with Cloud Build" | Deploy SA missing `cloudbuild.builds.editor` or `storage.admin` |
 | `cd.yml` fails at "Deploy to Cloud Run" | Deploy SA missing `run.admin` or `iam.serviceAccountUser` |
 | Firestore calls fail with a "project not found"-style error despite `gcloud auth application-default login` | Set `GOOGLE_CLOUD_PROJECT` explicitly — step 6 |
+| Startup fails with "Notification channel '...' is partially configured" | Some, not all, of that channel's variables are set — § 9 |
 | `POST /api/notifications` returns `409 NO_NOTIFICATION_CHANNELS` | No channel variables set on this service — § 9 |
+| A delivery shows `"success": false` with `telegram responded 400: ... chat not found` | Wrong `TELEGRAM_CHAT_ID`, or you never messaged the bot first — § 9 |
