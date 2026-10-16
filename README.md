@@ -71,6 +71,14 @@ POST /api/tasks/tick          # run all due tasks (for scheduling)
 GET  /api/tasks               # list tasks
 ```
 
+🔔 Notifications
+```
+POST /api/notifications          # send a test message to every configured channel
+```
+Add `"notify": "ALWAYS"` or `"ON_FAILURE"` to a task-creation body to get
+its results on Discord/Telegram/email. Channel setup:
+[`docs/SETUP.md`](docs/SETUP.md#9-notification-channels-discord-telegram-email).
+
 `tick` checks an `X-Tick-Secret` header against the `TASK_RUNNER_TICK_SECRET`
 env var when that var is set (unset = open, same as before). See
 [`docs/SETUP.md`](docs/SETUP.md#8-securing-post-apitaskstick).

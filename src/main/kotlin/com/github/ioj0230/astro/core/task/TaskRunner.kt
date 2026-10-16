@@ -6,7 +6,11 @@ import com.github.ioj0230.astro.core.math.AstroMathService
 import com.github.ioj0230.astro.core.meteor.AstroEventService
 import com.github.ioj0230.astro.core.meteor.MeteorAlertRequest
 import com.github.ioj0230.astro.core.meteor.MeteorAlertResponse
+import com.github.ioj0230.astro.core.notify.Notification
+import com.github.ioj0230.astro.core.notify.NotificationDelivery
+import com.github.ioj0230.astro.core.notify.NotificationService
 import com.github.ioj0230.astro.core.sky.SkySummaryService
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import java.time.Clock
@@ -17,6 +21,8 @@ import java.util.UUID
 data class TaskRunResult(
     val task: Task,
     val outputJson: String? = null,
+    // One entry per channel; empty when the task's NotifyPolicy said not to send
+    val deliveries: List<NotificationDelivery> = emptyList(),
 )
 
 class TaskRunner(
@@ -25,6 +31,7 @@ class TaskRunner(
     private val astroEventService: AstroEventService,
     private val skySummaryService: SkySummaryService,
     private val json: Json,
+    private val notificationService: NotificationService = NotificationService(emptyList()),
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private fun nowUtc(): OffsetDateTime = OffsetDateTime.now(clock)
@@ -43,6 +50,7 @@ class TaskRunner(
         frequency: TaskFrequency = TaskFrequency.MANUAL,
         preferredHourUtc: Int? = null,
         enabled: Boolean = true,
+        notify: NotifyPolicy = NotifyPolicy.NEVER,
     ): Task {
         require(name.isNotBlank()) { "name must not be blank" }
         if (frequency == TaskFrequency.DAILY) {
@@ -65,6 +73,7 @@ class TaskRunner(
                 frequency = frequency,
                 preferredHourUtc = preferredHourUtc,
                 enabled = enabled,
+                notify = notify,
             )
 
         return taskRepository.create(task)
@@ -90,7 +99,7 @@ class TaskRunner(
         )
     }
 
-    fun runTask(taskId: String): TaskRunResult? {
+    suspend fun runTask(taskId: String): TaskRunResult? {
         val existing = taskRepository.findById(taskId) ?: return null
         if (!existing.enabled) {
             val updated =
@@ -106,9 +115,11 @@ class TaskRunner(
         // One success/failure path for every task type: a throwing task is
         // recorded as FAILED on that task instead of escaping — which would
         // otherwise abort `tick` for every task after it.
-        val outputJson =
+        val output =
             try {
                 execute(existing)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 val failed =
                     existing.copy(
@@ -116,7 +127,9 @@ class TaskRunner(
                         lastStatus = TaskStatus.FAILED,
                         lastError = e.message ?: "${existing.type} task failed",
                     )
-                return TaskRunResult(taskRepository.update(failed), outputJson = null)
+                val stored = taskRepository.update(failed)
+                val deliveries = notifyIfWanted(stored, succeeded = false, TaskNotifications.failure(stored))
+                return TaskRunResult(stored, outputJson = null, deliveries = deliveries)
             }
 
         val succeeded =
@@ -125,10 +138,23 @@ class TaskRunner(
                 lastStatus = TaskStatus.SUCCESS,
                 lastError = null,
             )
-        return TaskRunResult(taskRepository.update(succeeded), outputJson)
+        val stored = taskRepository.update(succeeded)
+        val deliveries = notifyIfWanted(stored, succeeded = true, output.notification)
+        return TaskRunResult(stored, output.outputJson, deliveries)
     }
 
-    fun runAllEnabled(): List<TaskRunResult> {
+    private suspend fun notifyIfWanted(
+        task: Task,
+        succeeded: Boolean,
+        notification: Notification,
+    ): List<NotificationDelivery> = if (task.notify.shouldNotify(succeeded)) notificationService.dispatch(notification) else emptyList()
+
+    private class TaskOutput(
+        val outputJson: String,
+        val notification: Notification,
+    )
+
+    suspend fun runAllEnabled(): List<TaskRunResult> {
         val all = taskRepository.findAll()
         val now = nowUtc()
 
@@ -149,14 +175,14 @@ class TaskRunner(
         }
     }
 
-    /** Runs the task's work and returns its output JSON. Throws on failure. */
-    private fun execute(task: Task): String =
+    /** Runs the task's work and returns its output. Throws on failure. */
+    private fun execute(task: Task): TaskOutput =
         when (task.type) {
             TaskType.DARK_WINDOW -> executeDarkWindow(task)
             TaskType.METEOR_ALERT -> executeMeteorAlert(task)
         }
 
-    private fun executeDarkWindow(task: Task): String {
+    private fun executeDarkWindow(task: Task): TaskOutput {
         val request = json.decodeFromString(DarkWindowRequest.serializer(), task.payloadJson)
 
         val window =
@@ -173,13 +199,19 @@ class TaskRunner(
                 notes = "Task-run dark window result.",
             )
 
-        return json.encodeToString(DarkWindowResponse.serializer(), response)
+        return TaskOutput(
+            outputJson = json.encodeToString(DarkWindowResponse.serializer(), response),
+            notification = TaskNotifications.darkWindow(task, response),
+        )
     }
 
-    private fun executeMeteorAlert(task: Task): String {
+    private fun executeMeteorAlert(task: Task): TaskOutput {
         val request = json.decodeFromString(MeteorAlertRequest.serializer(), task.payloadJson)
         val response: MeteorAlertResponse = astroEventService.upcomingMeteorShowers(request)
-        return json.encodeToString(MeteorAlertResponse.serializer(), response)
+        return TaskOutput(
+            outputJson = json.encodeToString(MeteorAlertResponse.serializer(), response),
+            notification = TaskNotifications.meteorAlert(task, response),
+        )
     }
 
     /**

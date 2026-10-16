@@ -43,3 +43,6 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+### Local secrets (notification channels etc.) ###
+.env
+.env.*

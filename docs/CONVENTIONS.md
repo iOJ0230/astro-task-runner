@@ -156,7 +156,9 @@ own mapping, add it next to the existing `exception<...>` blocks in
   `src/test/.../TestApplicationModule.kt`) is `module()` with
   `InMemoryTaskRepository` injected. Always use `testModule()` in new
   integration tests; calling `module()` directly reintroduces a hard
-  dependency on live GCP credentials.
+  dependency on live GCP credentials. To check notifications, pass fakes:
+  `testModule(listOf(FakeNotifier("discord")))`, then assert on
+  `.sent`. The default is no channels.
 - Test names use backtick-quoted sentences (`` `should not run MANUAL
   tasks`() ``) — keep using full sentences, not `testX()`/camelCase names;
   it's the existing convention and it's more readable in CI output.
